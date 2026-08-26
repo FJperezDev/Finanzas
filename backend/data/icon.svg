@@ -1,0 +1,150 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 1000 500"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">FJ Dev — Personal Brand</title>
+
+  <desc id="desc">
+    Modern FJ monogram with a dark, warm and golden visual identity.
+  </desc>
+
+  <defs>
+
+    <!-- Gradiente dorado principal -->
+    <linearGradient
+      id="gold"
+      x1="0%"
+      y1="0%"
+      x2="100%"
+      y2="100%"
+    >
+      <stop offset="0%" stop-color="#F4B72B" />
+      <stop offset="50%" stop-color="#FCCB43" />
+      <stop offset="100%" stop-color="#FFE7A3" />
+    </linearGradient>
+
+    <!-- Gradiente más intenso para DEV -->
+    <linearGradient
+      id="goldDev"
+      x1="0%"
+      y1="0%"
+      x2="100%"
+      y2="0%"
+    >
+      <stop offset="0%" stop-color="#F7B92F" />
+      <stop offset="45%" stop-color="#FFD45E" />
+      <stop offset="100%" stop-color="#FFF1C7" />
+    </linearGradient>
+
+    <!-- Sombra cálida sutil -->
+    <filter
+      id="shadow"
+      x="-20%"
+      y="-20%"
+      width="140%"
+      height="140%"
+    >
+      <feDropShadow
+        dx="0"
+        dy="12"
+        stdDeviation="14"
+        flood-color="#F4B72B"
+        flood-opacity="0.12"
+      />
+    </filter>
+
+  </defs>
+
+
+  <!-- =========================
+       MONOGRAMA FJ
+       ========================= -->
+
+  <g
+    transform="translate(70 55)"
+    filter="url(#shadow)"
+  >
+
+    <!-- F -->
+    <path
+      fill="#F1F1F1"
+      d="
+        M55 355
+        V45
+        H285
+
+        L250 105
+        H125
+
+        V170
+        H235
+
+        L205 225
+        H125
+
+        V355
+        Z
+      "
+    />
+
+
+    <!-- J -->
+    <path
+      fill="url(#gold)"
+      d="
+        M355 45
+        H465
+
+        V250
+
+        C465 330 415 375 330 375
+
+        C265 375 220 345 195 300
+
+        L245 260
+
+        C263 295 290 315 330 315
+
+        C375 315 395 290 395 245
+
+        V105
+        H335
+
+        Z
+      "
+    />
+
+  </g>
+
+
+  <!-- =========================
+       DEV
+       ========================= -->
+
+  <text
+    x="535"
+    y="365"
+    fill="url(#goldDev)"
+    font-family="Inter, Helvetica, Arial, sans-serif"
+    font-size="210"
+    font-weight="800"
+    letter-spacing="-10"
+  >
+    dev
+  </text>
+
+
+  <!-- Línea decorativa -->
+  <rect
+    x="550"
+    y="405"
+    width="310"
+    height="5"
+    rx="2.5"
+    fill="url(#gold)"
+    opacity="0.9"
+  />
+
+</svg>

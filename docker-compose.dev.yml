@@ -1,0 +1,35 @@
+services:
+  backend:
+    image: finanzas-backend-dev
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      # Sincroniza tu código local con la carpeta /app del contenedor
+      - ./backend:/app
+    environment:
+      - DEBUG=1
+      - FINANZAS_ADMIN_USERNAME=${FINANZAS_ADMIN_USERNAME:-admin}
+      - FINANZAS_ADMIN_PASSWORD=${FINANZAS_ADMIN_PASSWORD:-admin123}
+      # Aquí puedes añadir variables de entorno para DB, etc.
+
+  frontend:
+    image: finanzas-frontend-dev
+    build:
+      context: ./mobile
+      dockerfile: Dockerfile.dev
+    ports:
+      # Exponemos el puerto de Metro/Expo
+      - "8081:8081"
+    volumes:
+      - ./mobile:/app
+      # ¡IMPORTANTE! Este volumen anónimo evita que tu carpeta local
+      # sobrescriba los node_modules instalados dentro del contenedor
+      - /app/node_modules
+    environment:
+      # Como no hay Nginx proxy en dev, apuntamos directo a Django
+      - EXPO_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend

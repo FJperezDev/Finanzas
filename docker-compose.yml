@@ -1,0 +1,28 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      - FINANZAS_ADMIN_USERNAME=${FINANZAS_ADMIN_USERNAME:-admin}
+      - FINANZAS_ADMIN_PASSWORD=${FINANZAS_ADMIN_PASSWORD:-admin123}
+    volumes:
+      - ./backend/data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build: ./mobile
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
