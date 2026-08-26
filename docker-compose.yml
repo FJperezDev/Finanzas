@@ -1,5 +1,6 @@
 services:
   backend:
+    container_name: finanzas_backend
     build: ./backend
     environment:
       - FINANZAS_ADMIN_USERNAME=${FINANZAS_ADMIN_USERNAME:-admin}
@@ -19,6 +20,7 @@ services:
       start_period: 15s
 
   frontend:
+    container_name: finanzas_frontend
     build: ./mobile
     ports:
       - "8080:80"
