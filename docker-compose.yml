@@ -7,6 +7,8 @@ services:
       - FINANZAS_ADMIN_PASSWORD=${FINANZAS_ADMIN_PASSWORD:-admin123}
     volumes:
       - ./backend/data:/app/data
+    networks:
+      - proxy
     restart: unless-stopped
     healthcheck:
       test:
@@ -22,9 +24,13 @@ services:
   frontend:
     container_name: finanzas_frontend
     build: ./mobile
-    ports:
-      - "8080:80"
+    networks:
+      - proxy
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  proxy:
+    external: true
