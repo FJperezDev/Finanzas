@@ -53,8 +53,22 @@ const GASTOS_MENSUALES: [string, string, string, number, number, number][] = [
   ["Fijo", "Seguros", "Seguro salud", 20, 25.0, 0.05],
   ["Ocio", "Restaurantes", "Salidas fin de semana", 10, 60.0, 0.3],
   ["Ocio", "Ocio_Vario", "Ocio y suscripciones", 22, 40.0, 0.3],
-  ["Inversión", "Indexado_SP500", "Transferencia MyInvestor - SP500", 5, 800.0, 0.0],
-  ["Inversión", "Cuenta_Remunerada", "Cuenta remunerada MyInvestor", 5, 100.0, 0.05],
+  [
+    "Inversión",
+    "Indexado_SP500",
+    "Transferencia MyInvestor - SP500",
+    5,
+    800.0,
+    0.0,
+  ],
+  [
+    "Inversión",
+    "Cuenta_Remunerada",
+    "Cuenta remunerada MyInvestor",
+    5,
+    100.0,
+    0.05,
+  ],
 ];
 
 function filasMes(anio: number, mes: number): FilaSeed[] {
@@ -77,13 +91,34 @@ function filasMes(anio: number, mes: number): FilaSeed[] {
     });
   };
 
-  fila("Ingreso", "Nómina", "Nomina", "Nómina mensual", 1, importe(NOMINA_NETA, 0.02));
+  fila(
+    "Ingreso",
+    "Nómina",
+    "Nomina",
+    "Nómina mensual",
+    1,
+    importe(NOMINA_NETA, 0.02),
+  );
   for (const [macro, sub, concepto, dia, base, vol] of GASTOS_MENSUALES) {
     fila("Gasto", macro, sub, concepto, dia, importe(base, vol));
   }
   if (MESES_PAGA_EXTRA.has(mes)) {
-    fila("Ingreso", "Regalo", "Paga_Extra", "Paga extra", 15, importe(PAGA_EXTRA_NETA, 0.02));
-    fila("Gasto", "Inversión", "Indexado_SP500", "Aportación extraordinaria indexado", 16, PAGA_EXTRA_INVERTIDA);
+    fila(
+      "Ingreso",
+      "Regalo",
+      "Paga_Extra",
+      "Paga extra",
+      15,
+      importe(PAGA_EXTRA_NETA, 0.02),
+    );
+    fila(
+      "Gasto",
+      "Inversión",
+      "Indexado_SP500",
+      "Aportación extraordinaria indexado",
+      16,
+      PAGA_EXTRA_INVERTIDA,
+    );
   }
   return filas;
 }
@@ -92,10 +127,31 @@ function filasMes(anio: number, mes: number): FilaSeed[] {
 // Enero 2026: la vista descrita del módulo editor
 // ---------------------------------------------------------------------------
 const ENERO_2026: FilaSeed[] = [
-  { Fecha: "2026-01-01", Tipo: "Ingreso", Categoria_Macro: "Nómina", Subcategoria: "Nómina", Concepto: "Nómina Enero", Importe: 2500.0 },
-  { Fecha: "2026-01-10", Tipo: "Gasto", Categoria_Macro: "Ocio", Subcategoria: "Comida", Concepto: "Compra Semanal", Importe: 150.0 },
+  {
+    Fecha: "2026-01-01",
+    Tipo: "Ingreso",
+    Categoria_Macro: "Nómina",
+    Subcategoria: "Nómina",
+    Concepto: "Nómina Enero",
+    Importe: 2500.0,
+  },
+  {
+    Fecha: "2026-01-10",
+    Tipo: "Gasto",
+    Categoria_Macro: "Ocio",
+    Subcategoria: "Comida",
+    Concepto: "Compra Semanal",
+    Importe: 150.0,
+  },
   // Valor guardado 1.150,00 €: el editor arranca con el cambio pendiente a 1.200,00 €
-  { Fecha: "2026-01-15", Tipo: "Gasto", Categoria_Macro: "Fijo", Subcategoria: "Alquiler", Concepto: "Alquiler Piso", Importe: 1150.0 },
+  {
+    Fecha: "2026-01-15",
+    Tipo: "Gasto",
+    Categoria_Macro: "Fijo",
+    Subcategoria: "Alquiler",
+    Concepto: "Alquiler Piso",
+    Importe: 1150.0,
+  },
 ];
 
 /** Marca del cambio pendiente inicial del editor (celda G3 en la vista). */

@@ -22,7 +22,7 @@ const MAPA_SUBCATEGORIAS: Record<string, string[]> = {
   Regalo: ["Regalo"],
   Deuda: ["Ocio", "Alquiler", "Comida", "Wifi", "Gastos"],
   Ocio: ["Ocio"],
-  Inversión: ["Cartera de Inversión", "Cuenta Remunerada"],
+  Inversión: ["Cartera de Inversión", "Cuenta Remunerada", "Marca Personal"],
   Fijo: ["Alquiler", "Comida", "Gimnasio", "Ropa", "Wifi", "Gastos"],
 };
 

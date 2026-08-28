@@ -63,8 +63,7 @@ export function DashboardScreen() {
 
   // Por defecto: el periodo más reciente disponible.
   const periodoActivo = periodo ?? periodos[periodos.length - 1] ?? null;
-  const anioActivo =
-    anioSeleccionado ?? anios[anios.length - 1] ?? null;
+  const anioActivo = anioSeleccionado ?? anios[anios.length - 1] ?? null;
 
   // Filas dentro del alcance (mes concreto / año concreto / todo).
   const dfAlcance = useMemo(() => {
@@ -152,7 +151,7 @@ export function DashboardScreen() {
             aportadoMyInvestor += f.Importe;
           } else if (sub.includes("remunerada")) {
             aportadoTradeRepublic += f.Importe;
-          }
+          } else totalGastos += f.Importe;
         }
       }
     }
@@ -244,7 +243,9 @@ export function DashboardScreen() {
         : "Distribución 50/30/20";
 
   const tituloHistorico =
-    alcance === "anio" ? `Histórico de Caja · ${anioActivo}` : "Histórico de Caja";
+    alcance === "anio"
+      ? `Histórico de Caja · ${anioActivo}`
+      : "Histórico de Caja";
 
   const textoVacio =
     alcance === "mes"
@@ -321,7 +322,9 @@ export function DashboardScreen() {
   const insight = getResumenInsight();
   const alcanceVacio = dfAlcance.length === 0;
   const detallePromedio = (valor: number) =>
-    alcance === "mes" ? undefined : `Promedio: ${fmtEur(valor / kpis.meses)}/mes`;
+    alcance === "mes"
+      ? undefined
+      : `Promedio: ${fmtEur(valor / kpis.meses)}/mes`;
 
   return (
     <ScrollView
