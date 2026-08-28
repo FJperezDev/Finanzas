@@ -55,7 +55,9 @@ export function TarjetaPilar({
       <View style={styles.pilarCuerpo}>
         <Text style={styles.pilarValor}>{fmtEur(valorActual)}</Text>
         <View style={styles.pilarFooter}>
-          <Text style={styles.pilarAportado}>Base: {fmtEur(aportado)}</Text>
+          {valorActual !== aportado && (
+            <Text style={styles.pilarAportado}>Base: {fmtEur(aportado)}</Text>
+          )}
           {variacion !== 0 && (
             <View
               style={[

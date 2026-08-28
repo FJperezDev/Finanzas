@@ -2,9 +2,8 @@
  * Semilla de datos: genera `transacciones.xlsx` si no existe.
  *
  * Replica el perfil de `generate_mock_data.py` (nómina 1.600 €, house
- * hacking, ahorro > 50 %) e incluye la vista descrita para el editor:
- * Enero 2026 con "Nómina Enero" 2.500,00 €, "Compra Semanal" 150,00 € y
- * "Alquiler Piso" con un cambio pendiente (1.150,00 → 1.200,00 €).
+ * hacking, ahorro > 50 %) e incluye enero de 2026 con "Nómina Enero"
+ * 2.500,00 €, "Compra Semanal" 150,00 € y "Alquiler Piso" 1.150,00 €.
  */
 import { COLUMNAS_EXCEL } from "./config";
 
@@ -143,7 +142,7 @@ const ENERO_2026: FilaSeed[] = [
     Concepto: "Compra Semanal",
     Importe: 150.0,
   },
-  // Valor guardado 1.150,00 €: el editor arranca con el cambio pendiente a 1.200,00 €
+  // Alquiler del piso (gasto fijo del mes de enero)
   {
     Fecha: "2026-01-15",
     Tipo: "Gasto",
@@ -153,14 +152,6 @@ const ENERO_2026: FilaSeed[] = [
     Importe: 1150.0,
   },
 ];
-
-/** Marca del cambio pendiente inicial del editor (celda G3 en la vista). */
-export const SEED_CAMBIO_PENDIENTE = {
-  concepto: "Alquiler Piso",
-  fecha: "2026-01-15",
-  importeGuardado: 1150.0,
-  importePendiente: 1200.0,
-};
 
 // ---------------------------------------------------------------------------
 // Generación

@@ -4,23 +4,25 @@
  */
 import { MESES_ES, MESES_ES_CORTO } from "./config";
 
-/** Formatea un importe en euros sin decimales: 1.250 € */
-export function fmtEur(valor: number): string {
-  return `${Math.round(valor).toLocaleString("es-ES")} €`;
+/** Formatea un número en español con miles (.) y decimales fijos: 1.234,56 */
+export function formatoEs(valor: number, decimales = 2): string {
+  const [entera, decimal = ""] = Math.abs(valor)
+    .toFixed(decimales)
+    .split(".");
+  const conMiles = entera.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return decimal ? `${conMiles},${decimal}` : conMiles;
 }
 
 /** Formatea un importe en euros con dos decimales: 1.250,50 € */
-export function fmtEur2(valor: number): string {
-  return `${valor.toLocaleString("es-ES", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} €`;
+export function fmtEur(valor: number): string {
+  const signo = valor < 0 ? "-" : "";
+  return `${signo}${formatoEs(valor)} €`;
 }
 
-/** Formatea un importe con signo explícito: +800 € / −1.200 € */
+/** Formatea un importe con signo explícito: +800,00 € / −1.200,50 € */
 export function fmtEurSigno(valor: number): string {
   const signo = valor >= 0 ? "+" : "−";
-  return `${signo}${Math.abs(Math.round(valor)).toLocaleString("es-ES")} €`;
+  return `${signo}${formatoEs(valor)} €`;
 }
 
 /** "Mes N · Año A, mes M" a partir de un ordinal de mes (1-indexado). */

@@ -8,7 +8,10 @@ import {
   VictoryTooltip,
   VictoryGroup,
 } from "victory";
+import { fmtEur } from "../../core/formatos";
 import { colors } from "../../theme";
+
+const a2 = (v: number) => Number(v.toFixed(2));
 
 const EJES = {
   axis: { stroke: colors.bordeFuerte },
@@ -90,7 +93,7 @@ export function FlujoChart({
         <VictoryAxis style={EJES} />
         <VictoryAxis
           dependentAxis
-          tickFormat={(t: number) => `${Math.round(t / 1000)}k`}
+          tickFormat={(t: number) => `${(t / 1000).toFixed(2)}k`}
           style={EJES_Y}
         />
 
@@ -98,8 +101,8 @@ export function FlujoChart({
           <VictoryBar
             data={datos.map((d) => ({
               x: d.etiqueta,
-              y: Math.round(d.ingresos),
-              label: `Ingresos: ${Math.round(d.ingresos)}€`,
+              y: a2(d.ingresos),
+              label: `Ingresos: ${fmtEur(d.ingresos)}`,
             }))}
             style={{ data: { fill: colors.exito, width: 10, opacity: opacidadDe } }}
             animate={{ duration: 600, onLoad: { duration: 600 } }}
@@ -114,8 +117,8 @@ export function FlujoChart({
           <VictoryBar
             data={datos.map((d) => ({
               x: d.etiqueta,
-              y: -Math.round(d.gastos), // Se representa en negativo
-              label: `Gastos: ${Math.round(d.gastos)}€`, // Pero el tooltip muestra el valor bruto positivo para mejor lectura
+              y: -a2(d.gastos), // Se representa en negativo
+              label: `Gastos: ${fmtEur(d.gastos)}`, // Pero el tooltip muestra el valor bruto positivo para mejor lectura
             }))}
             style={{ data: { fill: colors.peligro, width: 10, opacity: opacidadDe } }}
             animate={{ duration: 600, onLoad: { duration: 600 } }}
@@ -132,8 +135,8 @@ export function FlujoChart({
         <VictoryLine
           data={datos.map((d) => ({
             x: d.etiqueta,
-            y: Math.round(d.neto),
-            label: `Neto: ${Math.round(d.neto)}€`,
+            y: a2(d.neto),
+            label: `Neto: ${fmtEur(d.neto)}`,
           }))}
           style={{ data: { stroke: colors.primario, strokeWidth: 3 } }}
           animate={{ duration: 1000, onLoad: { duration: 1000 } }}

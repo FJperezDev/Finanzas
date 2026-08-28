@@ -3,6 +3,8 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -24,23 +26,35 @@ def env_bool(nombre: str, defecto: bool = False) -> bool:
 # Seguridad
 # ---------------------------------------------------------------------------
 
+DEBUG = env_bool("DEBUG", True)
+
 SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
     "django-insecure-finanzas-local-desarrollo",
 )
+if not DEBUG and SECRET_KEY.startswith("django-insecure-"):
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY debe ser una clave real en producción."
+    )
 
 # Usuario administrador (único usuario de la aplicación) definido por
-# variables de entorno. Cambia la contraseña antes de desplegar.
+# variables de entorno. En desarrollo se permite el fallback local; en
+# producción la contraseña es obligatoria.
 FINANZAS_ADMIN_USERNAME = os.getenv("FINANZAS_ADMIN_USERNAME", "admin")
-FINANZAS_ADMIN_PASSWORD = os.getenv("FINANZAS_ADMIN_PASSWORD", "admin123")
+FINANZAS_ADMIN_PASSWORD = os.getenv("FINANZAS_ADMIN_PASSWORD")
+if not FINANZAS_ADMIN_PASSWORD:
+    if DEBUG:
+        FINANZAS_ADMIN_PASSWORD = "admin123"
+    else:
+        raise ImproperlyConfigured(
+            "FINANZAS_ADMIN_PASSWORD es obligatoria en producción."
+        )
 
 # Firma de los tokens de acceso/refresco (por defecto reutiliza SECRET_KEY).
 FINANZAS_TOKEN_SECRET = os.getenv("FINANZAS_TOKEN_SECRET", SECRET_KEY)
 
 FINANZAS_ACCESS_TOKEN_MINUTES = int(os.getenv("FINANZAS_ACCESS_TOKEN_MINUTES", "15"))
 FINANZAS_REFRESH_TOKEN_DAYS = int(os.getenv("FINANZAS_REFRESH_TOKEN_DAYS", "7"))
-
-DEBUG = env_bool("DEBUG", True)
 
 ALLOWED_HOSTS = [
     host.strip()

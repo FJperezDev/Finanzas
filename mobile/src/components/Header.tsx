@@ -43,8 +43,7 @@ export function Header({ navigation, route, options }: DrawerHeaderProps) {
   return (
     <View style={[styles.contenedor, { paddingTop: insets.top }]}>
       <View style={styles.barra}>
-        {/* IZQUIERDA: Home / Dashboard (Tu nuevo Logo) */}
-        <Pressable
+        {/* IZQUIERDA: Home / Dashboard (Tu nuevo Logo) */}        <Pressable
           style={({ pressed }) => [
             styles.botonIcono,
             pressed && styles.botonIconoActivo,
@@ -208,6 +207,21 @@ export function Header({ navigation, route, options }: DrawerHeaderProps) {
           </View>
         </View>
       </View>
+
+      {/* Aviso persistente: sin sesión, los datos mostrados son de ejemplo. */}
+      {!autenticado && !esLogin && (
+        <Pressable
+          style={styles.bannerDemo}
+          onPress={() => navigation.navigate("Login")}
+          accessibilityLabel="Iniciar sesión para ver tus datos reales"
+        >
+          <Ionicons name="flask-outline" size={13} color={colors.aviso} />
+          <Text style={styles.bannerDemoTexto}>
+            Modo demostración · datos de ejemplo. Inicia sesión para ver tus
+            datos reales.
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -276,6 +290,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.peligro,
     borderWidth: 2,
     borderColor: colors.fondo,
+  },
+
+  bannerDemo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: colors.avisoSuave,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
+  },
+  bannerDemoTexto: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.aviso,
+    fontWeight: "600",
   },
 
   // --- ESTILOS DEL DROPDOWN ---

@@ -46,8 +46,19 @@ export function normalizarImporte(valor: unknown): number {
   if (typeof valor === "number") return valor;
   if (valor == null) return 0;
   const texto = String(valor).trim().replace(/\u00a0/g, " ");
-  const limpio = texto.replace(/\./g, "").replace(",", ".").replace(/[^\d.\-]/g, "");
-  const numero = Number(limpio);
+  const conPunto = texto.includes(".") && texto.includes(",");
+  let limpio: string;
+  if (conPunto) {
+    // El separador que aparece en último lugar es el decimal:
+    // "1.234,56" (ES) y "1,234.56" (EN) se interpretan correctamente.
+    limpio =
+      texto.lastIndexOf(".") > texto.lastIndexOf(",")
+        ? texto.replace(/,/g, "")
+        : texto.replace(/\./g, "").replace(",", ".");
+  } else {
+    limpio = texto.replace(",", ".");
+  }
+  const numero = Number(limpio.replace(/[^\d.\-]/g, ""));
   return Number.isFinite(numero) ? numero : 0;
 }
 

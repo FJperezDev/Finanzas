@@ -11,6 +11,7 @@ Endpoints:
 import json
 from datetime import date
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -86,24 +87,27 @@ def guardar_transacciones(request) -> JsonResponse:
     if errores:
         return JsonResponse({"errores": errores[:20]}, status=400)
 
-    filas_previas = [fila_a_dict(t) for t in Transaccion.objects.all()]
-    _guardar_backup(filas_previas)
+    # Backup + reemplazo en una única transacción: si algo falla a mitad,
+    # la BD queda exactamente como estaba.
+    with transaction.atomic():
+        filas_previas = [fila_a_dict(t) for t in Transaccion.objects.all()]
+        _guardar_backup(filas_previas)
 
-    Transaccion.objects.all().delete()
-    for fila in filas:
-        extras = {}
-        for clave, valor in fila.items():
-            if clave not in COLUMNAS_EXCEL and clave != "id":
-                extras[clave] = "" if valor is None else valor
-        Transaccion.objects.create(
-            fecha=date.fromisoformat(fila["Fecha"]),
-            tipo=fila["Tipo"],
-            categoria_macro=fila["Categoria_Macro"],
-            subcategoria=str(fila.get("Subcategoria") or ""),
-            concepto=str(fila.get("Concepto") or ""),
-            importe=importe_entero(float(fila["Importe"])),
-            extras=extras,
-        )
+        Transaccion.objects.all().delete()
+        for fila in filas:
+            extras = {}
+            for clave, valor in fila.items():
+                if clave not in COLUMNAS_EXCEL and clave != "id":
+                    extras[clave] = "" if valor is None else valor
+            Transaccion.objects.create(
+                fecha=date.fromisoformat(fila["Fecha"]),
+                tipo=fila["Tipo"],
+                categoria_macro=fila["Categoria_Macro"],
+                subcategoria=str(fila.get("Subcategoria") or ""),
+                concepto=str(fila.get("Concepto") or ""),
+                importe=importe_entero(float(fila["Importe"])),
+                extras=extras,
+            )
 
     return JsonResponse(
         {"ok": True, "filas": len(filas), "backup": len(filas_previas) > 0}

@@ -26,7 +26,12 @@ import {
   Tarjeta,
   TituloSeccion,
 } from "../components/ui";
-import { distribucion503020, flujoDeCajaMensual } from "../core/calculations";
+import {
+  distribucion503020,
+  esTransferenciaInversion,
+  flujoDeCajaMensual,
+  patrimonioAcumulado,
+} from "../core/calculations";
 import { UMBRAL_FIJOS_ALERTA } from "../core/config";
 import { etiquetaPeriodo, fmtEur, fmtPct, nombreMes } from "../core/formatos";
 import { useTransacciones } from "../hooks/useTransacciones";
@@ -107,7 +112,7 @@ export function DashboardScreen() {
     for (const f of dfAlcance) {
       meses.add(f.Fecha.slice(0, 7));
       if (f.Tipo === "Ingreso") ingresos += f.Importe;
-      else if (f.Tipo === "Gasto") {
+      else if (f.Tipo === "Gasto" && !esTransferenciaInversion(f)) {
         gastos += f.Importe;
         if (f.Categoria_Macro === "Fijo") fijo += f.Importe;
         else if (f.Categoria_Macro === "Ocio") ocio += f.Importe;
@@ -133,51 +138,18 @@ export function DashboardScreen() {
 
   // -------------------------------------------------------------------------
   // Patrimonio acumulado hasta el final del alcance
+  //
+  // Los gastos de 'Inversión' son transferencias a otras cuentas (cartera o
+  // cuenta remunerada): no restan del balance corriente, se suman como
+  // aportado. Solo 'Marca Personal' es un gasto real que resta.
   // -------------------------------------------------------------------------
   const patrimonio = useMemo(() => {
-    let aportadoMyInvestor = 0;
-    let aportadoTradeRepublic = 0;
-    let totalIngresos = 0;
-    let totalGastos = 0;
-
-    for (const f of dfHasta) {
-      if (f.Tipo === "Ingreso") {
-        totalIngresos += f.Importe;
-      } else if (f.Tipo === "Gasto") {
-        totalGastos += f.Importe;
-        if (f.Categoria_Macro === "Inversión") {
-          const sub = (f.Subcategoria || "").toLowerCase();
-          if (sub.includes("cartera") || sub.includes("indexada")) {
-            aportadoMyInvestor += f.Importe;
-          } else if (sub.includes("remunerada")) {
-            aportadoTradeRepublic += f.Importe;
-          } else totalGastos += f.Importe;
-        }
-      }
-    }
-
-    const balanceCorriente = totalIngresos - totalGastos;
-    // Mock temporal para visualización de UI (9% y 2.5%)
-    const actualMyInvestor = aportadoMyInvestor * 1.09;
-    const actualTradeRepublic = aportadoTradeRepublic * 1.025;
-
-    // CALCULOS HERO
-    const totalActual =
-      balanceCorriente + actualMyInvestor + actualTradeRepublic;
-    const totalAportado =
-      balanceCorriente + aportadoMyInvestor + aportadoTradeRepublic;
-    const crecimientoGlobal = totalActual - totalAportado;
-    const roiGlobal = totalAportado > 0 ? crecimientoGlobal / totalAportado : 0;
-
+    const p = patrimonioAcumulado(dfHasta);
     return {
-      aportadoMyInvestor,
-      actualMyInvestor,
-      aportadoTradeRepublic,
-      actualTradeRepublic,
-      balanceCorriente,
-      totalActual,
-      crecimientoGlobal,
-      roiGlobal,
+      aportadoMyInvestor: p.aportadoCartera,
+      aportadoTradeRepublic: p.aportadoRemunerada,
+      balanceCorriente: p.balanceCorriente,
+      totalActual: p.totalPatrimonio,
     };
   }, [dfHasta]);
 
@@ -359,15 +331,6 @@ export function DashboardScreen() {
         <Text style={styles.heroEtiqueta}>{etiquetaHero}</Text>
         <View style={styles.heroValorRow}>
           <Text style={styles.heroValor}>{fmtEur(patrimonio.totalActual)}</Text>
-          {patrimonio.crecimientoGlobal > 0 && (
-            <View style={styles.heroBadge}>
-              <Ionicons name="caret-up" size={16} color={colors.exito} />
-              <Text style={styles.heroBadgeText}>
-                +{fmtEur(patrimonio.crecimientoGlobal)} (
-                {fmtPct(patrimonio.roiGlobal)})
-              </Text>
-            </View>
-          )}
         </View>
       </View>
 
@@ -385,17 +348,17 @@ export function DashboardScreen() {
         />
         <TarjetaPilar
           titulo="Crecimiento"
-          subtitulo="Inversión (9% TAE est.)"
+          subtitulo="Fondo indexado · aportado"
           aportado={patrimonio.aportadoMyInvestor}
-          valorActual={patrimonio.actualMyInvestor}
+          valorActual={patrimonio.aportadoMyInvestor}
           icono="rocket-outline"
           colorAcento={colors.primarioFuerte}
         />
         <TarjetaPilar
           titulo="Seguridad"
-          subtitulo="Remunerada (2.5% TAE)"
+          subtitulo="Cuenta remunerada · aportado"
           aportado={patrimonio.aportadoTradeRepublic}
-          valorActual={patrimonio.actualTradeRepublic}
+          valorActual={patrimonio.aportadoTradeRepublic}
           icono="shield-checkmark-outline"
           colorAcento={colors.exito}
         />
@@ -574,20 +537,6 @@ const styles = StyleSheet.create({
     color: colors.texto,
     fontVariant: ["tabular-nums"],
     letterSpacing: -1,
-  },
-  heroBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.exitoSuave,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4,
-  },
-  heroBadgeText: {
-    color: colors.exito,
-    fontWeight: "800",
-    fontSize: 14,
   },
 
   // PILARES (CONTENEDOR GLOBAL)

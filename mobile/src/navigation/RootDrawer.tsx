@@ -39,7 +39,7 @@ function ContenidoDrawer(props: any) {
       </View>
       <DrawerItemList {...props} />
       <View style={styles.perfil}>
-        <Text style={styles.metricaValor}>25.000 €</Text>
+        <Text style={styles.metricaValor}>25.000,00 €</Text>
         <Text style={styles.metricaEtiqueta}>Salario bruto anual</Text>
         <Text style={styles.perfilTexto}>
           Perfil: House Hacking + Pignoración de fondos

@@ -4,6 +4,7 @@ from datetime import date
 from io import BytesIO
 
 from django.conf import settings
+from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
 from openpyxl import load_workbook
@@ -30,6 +31,10 @@ def tokens_de_admin() -> dict:
 
 
 class AuthTests(TestCase):
+    def setUp(self) -> None:
+        # El throttle usa la caché compartida entre tests.
+        cache.clear()
+
     def test_login_emite_access_y_refresh(self) -> None:
         tokens = tokens_de_admin()
         self.assertIn("access", tokens)
@@ -53,6 +58,40 @@ class AuthTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(respuesta.status_code, 400)
+
+    def test_login_bloquea_tras_intentos_fallidos(self) -> None:
+        for _ in range(5):
+            respuesta = self.client.post(
+                reverse("login"),
+                data=json.dumps({"username": "admin", "password": "mala"}),
+                content_type="application/json",
+            )
+            self.assertEqual(respuesta.status_code, 401)
+
+        # El sexto intento queda bloqueado aunque las credenciales sean buenas.
+        respuesta = self.client.post(
+            reverse("login"),
+            data=json.dumps(
+                {
+                    "username": settings.FINANZAS_ADMIN_USERNAME,
+                    "password": settings.FINANZAS_ADMIN_PASSWORD,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(respuesta.status_code, 429)
+
+    def test_login_exitoso_resetea_el_contador(self) -> None:
+        for _ in range(3):
+            respuesta = self.client.post(
+                reverse("login"),
+                data=json.dumps({"username": "admin", "password": "mala"}),
+                content_type="application/json",
+            )
+            self.assertEqual(respuesta.status_code, 401)
+
+        tokens = tokens_de_admin()
+        self.assertIn("access", tokens)
 
     def test_refrescar_rota_el_token(self) -> None:
         tokens = tokens_de_admin()
@@ -144,6 +183,7 @@ class ValidacionTests(TestCase):
 
 class ApiTests(TestCase):
     def setUp(self) -> None:
+        cache.clear()
         Transaccion.objects.create(
             fecha=date(2026, 1, 1),
             tipo="Ingreso",

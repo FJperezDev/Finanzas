@@ -5,6 +5,7 @@ import uuid
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -12,6 +13,11 @@ from django.views.decorators.http import require_POST
 
 from .auth import credenciales_validas, emitir_token, verificar_token
 from .models import RefreshToken
+
+# Protección de fuerza bruta en el login: N intentos fallidos por IP antes
+# de bloquear durante una ventana de tiempo.
+MAX_INTENTOS_LOGIN = 5
+VENTANA_LOGIN_SEGUNDOS = 15 * 60
 
 
 def _cuerpo_json(request) -> dict | None:
@@ -57,9 +63,23 @@ def login(request) -> JsonResponse:
     usuario = str(cuerpo.get("username") or "").strip()
     contrasena = str(cuerpo.get("password") or "")
 
+    clave = f"login:intentos:{request.META.get('REMOTE_ADDR', 'desconocida')}"
+    intentos = cache.get(clave, 0)
+    if intentos >= MAX_INTENTOS_LOGIN:
+        return JsonResponse(
+            {
+                "errores": [
+                    "Demasiados intentos fallidos. Espera unos minutos antes de reintentar."
+                ]
+            },
+            status=429,
+        )
+
     if not credenciales_validas(usuario, contrasena):
+        cache.set(clave, intentos + 1, VENTANA_LOGIN_SEGUNDOS)
         return JsonResponse({"errores": ["Credenciales inválidas."]}, status=401)
 
+    cache.delete(clave)
     return JsonResponse(_emitir_par(usuario))
 
 

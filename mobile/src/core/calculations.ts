@@ -47,6 +47,90 @@ export interface FilaProyeccion {
 }
 
 // ---------------------------------------------------------------------------
+// Clasificación de inversiones
+// ---------------------------------------------------------------------------
+/**
+ * Clasifica la Subcategoria de un movimiento de 'Inversión':
+ *  - "marca_personal": gasto real (resta del patrimonio).
+ *  - "remunerada":     transferencia a la cuenta remunerada (no resta).
+ *  - "cartera":        transferencia al fondo indexado/cartera (no resta).
+ */
+export type ClasificacionInversion =
+  | "marca_personal"
+  | "remunerada"
+  | "cartera";
+
+export function clasificarInversion(
+  subcategoria: string,
+): ClasificacionInversion {
+  const sub = (subcategoria ?? "").replace(/[_\s-]+/g, " ").toLowerCase();
+  if (sub.includes("marca personal")) return "marca_personal";
+  if (sub.includes("remunerada")) return "remunerada";
+  return "cartera";
+}
+
+/**
+ * ¿Es una transferencia a otra cuenta (no corriente)? Solo los gastos de
+ * 'Inversión' que NO son 'Marca Personal' se consideran transferencias:
+ * el dinero no sale del patrimonio, cambia de cuenta.
+ */
+export function esTransferenciaInversion(fila: FilaTransaccion): boolean {
+  return (
+    fila.Tipo === "Gasto" &&
+    fila.Categoria_Macro === "Inversión" &&
+    clasificarInversion(fila.Subcategoria ?? "") !== "marca_personal"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Patrimonio acumulado
+// ---------------------------------------------------------------------------
+export interface FilaPatrimonio {
+  balanceCorriente: number;
+  aportadoCartera: number;
+  aportadoRemunerada: number;
+  totalPatrimonio: number;
+}
+
+/**
+ * Patrimonio acumulado hasta un conjunto de filas.
+ *
+ * Contabilidad: toda transferencia sale de la cuenta corriente (reduce el
+ * balance), pero no reduce el patrimonio: se suma como aportado a su cuenta
+ * destino (cartera o remunerada). Solo 'Marca Personal' es un gasto real que
+ * destruye patrimonio.
+ */
+export function patrimonioAcumulado(filas: FilaTransaccion[]): FilaPatrimonio {
+  let aportadoCartera = 0;
+  let aportadoRemunerada = 0;
+  let totalIngresos = 0;
+  let totalGastos = 0;
+
+  for (const f of filas) {
+    if (f.Tipo === "Ingreso") {
+      totalIngresos += f.Importe;
+    } else if (f.Tipo === "Gasto") {
+      totalGastos += f.Importe;
+      if (esTransferenciaInversion(f)) {
+        if (clasificarInversion(f.Subcategoria ?? "") === "remunerada") {
+          aportadoRemunerada += f.Importe;
+        } else {
+          aportadoCartera += f.Importe;
+        }
+      }
+    }
+  }
+
+  const balanceCorriente = totalIngresos - totalGastos;
+  return {
+    balanceCorriente,
+    aportadoCartera,
+    aportadoRemunerada,
+    totalPatrimonio: balanceCorriente + aportadoCartera + aportadoRemunerada,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Flujo de caja mensual
 // ---------------------------------------------------------------------------
 /** Agrega por mes ingresos, gastos y flujo de caja neto (orden cronológico). */
@@ -72,10 +156,8 @@ export function flujoDeCajaMensual(
     const importeAbsoluto = Math.abs(f.Importe_Firmado ?? f.Importe);
 
     if (f.Tipo === "Ingreso") registro.Ingresos += importeAbsoluto;
-    else if (f.Tipo === "Gasto") {
-      if (f.Categoria_Macro !== "Inversión") {
-        registro.Gastos += importeAbsoluto;
-      }
+    else if (f.Tipo === "Gasto" && !esTransferenciaInversion(f)) {
+      registro.Gastos += importeAbsoluto;
     }
     porMes.set(clave, registro);
   }

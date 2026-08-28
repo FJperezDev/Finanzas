@@ -20,7 +20,6 @@ import {
   TIPOS_PERMITIDOS,
 } from "../core/config";
 import { anioMesDe, esFechaValida, hoyISO } from "../core/formatos";
-import { SEED_CAMBIO_PENDIENTE } from "../core/seed";
 import {
   escribirTransacciones,
   generarSeedSiNecesario,
@@ -278,25 +277,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ cargando: true, error: null });
     try {
       await generarSeedSiNecesario();
-      let filas = await leerTransacciones();
-
-      // Semilla del cambio pendiente de la vista (G3: 1.150,00 → 1.200,00 €).
-      let cambioInicial: Cambio | null = null;
-      const alquiler = filas.find(
-        (f) =>
-          f.Concepto === SEED_CAMBIO_PENDIENTE.concepto &&
-          f.Fecha === SEED_CAMBIO_PENDIENTE.fecha &&
-          f.Importe === SEED_CAMBIO_PENDIENTE.importeGuardado,
-      );
-      if (alquiler) {
-        cambioInicial = {
-          id: alquiler.__id,
-          col: "Importe",
-          prev: SEED_CAMBIO_PENDIENTE.importeGuardado,
-          next: SEED_CAMBIO_PENDIENTE.importePendiente,
-        };
-        filas = aplicarCambio(filas, cambioInicial);
-      }
+      const filas = await leerTransacciones();
 
       const { anio, mes } = filtrosPorDefecto(filas);
       const primera = filas.find((f) => {
@@ -309,15 +290,14 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         filas,
         guardadas: filas.map(clonarFila),
         columnasExtra: columnasExtraDe(filas),
-        undoStack: cambioInicial ? [cambioInicial] : [],
+        undoStack: [],
         redoStack: [],
         filasSeleccionadas: [],
         seleccion: primera ? { id: primera.__id, col: "Fecha" } : null,
         anio,
         mes,
-        sucio: cambioInicial != null,
+        sucio: false,
       });
-      if (cambioInicial) programarAutoguardado();
     } catch (exc) {
       set({
         cargando: false,
