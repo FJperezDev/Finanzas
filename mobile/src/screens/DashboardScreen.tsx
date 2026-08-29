@@ -608,9 +608,9 @@ function ModalSaldarDeuda({
     if (isNaN(importe) || importe <= 0) return;
     setGuardando(true);
     try {
-      // El backend salda (total o parcialmente) la deuda con el contacto y,
-      // si se pide, registra la transacción espejo. Si no se registra el
-      // movimiento, la cantidad se considera "perdonada".
+      // Transferencia (si la casilla está marcada) o perdón (si no). Si el
+      // importe supera el saldo, el exceso vuelca la balanza (pases a deber o
+      // el contacto pase a deberte).
       await saldarDeuda({
         contacto_id: balance.contacto.id,
         importe,
@@ -623,6 +623,12 @@ function ModalSaldarDeuda({
       setGuardando(false);
     }
   };
+
+  const importeNum = parseFloat(cantidad.replace(",", "."));
+  const exceso =
+    !isNaN(importeNum) && importeNum > Math.abs(balance.balanceNeto)
+      ? importeNum - Math.abs(balance.balanceNeto)
+      : 0;
 
   return (
     <Modal visible={!!balance} animationType="fade" transparent>
@@ -658,6 +664,13 @@ function ModalSaldarDeuda({
             onChangeText={setCantidad}
             keyboardType="numeric"
           />
+          {generarMovimiento && exceso > 0.01 && (
+            <Text style={styles.txtNotaGasto}>
+              {soyDeudor
+                ? `Supera el saldo: pagas ${fmtEur(exceso)} de más, así que ${balance.contacto.nombre} te deberá ese importe.`
+                : `Supera el saldo: ${balance.contacto.nombre} te paga ${fmtEur(exceso)} de más, así que le deberás ese importe.`}
+            </Text>
+          )}
 
           <TouchableOpacity
             style={styles.btnCheckSaldar}

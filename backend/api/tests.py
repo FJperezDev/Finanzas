@@ -640,6 +640,47 @@ class SaldarDeudasTests(TestCase):
         self.assertTrue(participacion.perdonado)
         self.assertEqual(Transaccion.objects.count(), 0)
 
+    def test_saldar_sobrepago_vuelca_el_saldo(self) -> None:
+        # Ana te debe 20 €; te paga 50 € (30 € de más → pasas a deberle 30).
+        gasto = GastoCompartido.objects.create(
+            concepto="Cena",
+            fecha=date(2026, 8, 15),
+            importe_total=Decimal("60.00"),
+            categoria_macro="Ocio",
+            subcategoria="Restaurantes",
+            tipo_reparto="IGUALES",
+            pagador=None,
+        )
+        participacion = Participacion.objects.create(
+            gasto=gasto, contacto=self.ana, importe_debido=Decimal("20.00")
+        )
+
+        respuesta = self.client.post(
+            reverse("saldar_gasto_compartido"),
+            data=json.dumps(
+                {"contacto_id": self.ana.id, "importe": 50, "registrar_transaccion": True}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(respuesta.status_code, 200)
+        datos = respuesta.json()
+        self.assertEqual(datos["importe"], 50.0)
+        self.assertEqual(datos["exceso"], 30.0)
+        self.assertEqual(datos["tipo"], "Ingreso")
+
+        participacion.refresh_from_db()
+        self.assertTrue(participacion.saldado)
+
+        # Se creó un gasto donde Ana pagó 30 → ahora le debo 30 €.
+        nuevo = GastoCompartido.objects.get(concepto__startswith="Saldo a favor")
+        self.assertEqual(nuevo.pagador, self.ana)
+        self.assertEqual(nuevo.importe_total, Decimal("30.00"))
+
+        # La transacción espejo es un ingreso de 50 €.
+        tx = Transaccion.objects.get(concepto__startswith="Saldar cuentas")
+        self.assertEqual(tx.tipo, "Ingreso")
+        self.assertEqual(tx.importe, 5000)
+
 
 class ContactoAvatarTests(TestCase):
     @classmethod

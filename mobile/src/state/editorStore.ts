@@ -3,7 +3,8 @@
  *
  * Mantiene una copia de trabajo del Excel en memoria con:
  *  - Filtros Año / Mes (vistas, como en Streamlit); el año puede ser "todos".
- *  - Historial de cambios con deshacer/rehacer (simula Ctrl+Z).
+ *  - Historial de cambios con deshacer/rehacer (Ctrl+Z / Ctrl+Y) de hasta
+ *    7 acciones, cubriendo cualquier tipo de edición (celda, fila, columna).
  *  - Marca de celdas modificadas respecto al último guardado (rojo + icono
  *    de deshacer por celda, como en Excel).
  *  - Autoguardado con debounce: cada cambio (celda, fila, columna, deshacer…)
@@ -42,11 +43,9 @@ import {
 // ---------------------------------------------------------------------------
 // Tipos
 // ---------------------------------------------------------------------------
-export interface Cambio {
-  id: string;
-  col: string;
-  prev: unknown;
-  next: unknown;
+export interface Snapshot {
+  filas: FilaTransaccion[];
+  columnasExtra: string[];
 }
 
 export interface SeleccionCelda {
@@ -68,8 +67,8 @@ export interface EditorState {
   guardadas: FilaTransaccion[]; // última versión persistida (baseline)
   columnasExtra: string[];
 
-  undoStack: Cambio[];
-  redoStack: Cambio[];
+  pasado: Snapshot[]; // historial de estados anteriores (máx. 7)
+  futuro: Snapshot[]; // estados deshechos, para rehacer
 
   seleccion: SeleccionCelda | null;
   filasSeleccionadas: string[]; // checkboxes de la columna A
@@ -162,15 +161,6 @@ function fechaDeNuevaFila(filas: FilaTransaccion[]): string {
   return filas[filas.length - 1].Fecha || hoyISO();
 }
 
-function aplicarCambio(
-  filas: FilaTransaccion[],
-  cambio: Cambio,
-): FilaTransaccion[] {
-  return filas.map((f) =>
-    f.__id === cambio.id ? { ...f, [cambio.col]: cambio.next } : f,
-  );
-}
-
 /** Fila guardada correspondiente (baseline), si existe. */
 function filaGuardada(
   guardadas: FilaTransaccion[],
@@ -179,8 +169,27 @@ function filaGuardada(
   return guardadas.find((g) => g.__id === id);
 }
 
-function valorSoloLectura(v: unknown): unknown {
-  return v;
+// ---------------------------------------------------------------------------
+// Historial de acciones (deshacer/rehacer, máximo 7)
+// ---------------------------------------------------------------------------
+const LIMITE_HISTORIAL = 7;
+
+/**
+ * Registra el estado actual antes de aplicar una mutación y actualiza el
+ * store. `filas` y `columnasExtra` se tratan de forma inmutable, por lo que
+ * guardar sus referencias es seguro (nunca se modifican in place).
+ */
+function registrarAccion(
+  get: () => EditorState,
+  set: (parcial: Partial<EditorState>) => void,
+  nuevo: Partial<EditorState>,
+): void {
+  const { pasado, filas, columnasExtra } = get();
+  const siguiente = [...pasado, { filas, columnasExtra }];
+  if (siguiente.length > LIMITE_HISTORIAL) {
+    siguiente.shift();
+  }
+  set({ ...nuevo, pasado: siguiente, futuro: [], sucio: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -297,8 +306,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   filas: [],
   guardadas: [],
   columnasExtra: [],
-  undoStack: [],
-  redoStack: [],
+  pasado: [],
+  futuro: [],
   seleccion: null,
   filasSeleccionadas: [],
   anio: new Date().getFullYear(),
@@ -334,8 +343,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         filas,
         guardadas: filas.map(clonarFila),
         columnasExtra: columnasExtraDe(filas),
-        undoStack: [],
-        redoStack: [],
+        pasado: [],
+        futuro: [],
         filasSeleccionadas: [],
         seleccion: primera ? { id: primera.__id, col: "Fecha" } : null,
         anio,
@@ -407,8 +416,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         filas: normalizadas,
         guardadas: normalizadas.map(clonarFila),
         sucio: false,
-        undoStack: [],
-        redoStack: [],
+        pasado: [],
+        futuro: [],
         filasSeleccionadas: [],
         flash: {
           tipo: "ok",
@@ -428,60 +437,52 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   // -------------------------------------------------------------------------
   setCelda: (id, col, valor) => {
-    const { filas, undoStack } = get();
+    const { filas } = get();
     const fila = filas.find((f) => f.__id === id);
     if (!fila) return;
-    const prev = fila[col];
-    if (prev === valor) return;
+    if (fila[col] === valor) return;
 
-    set({
+    registrarAccion(get, set, {
       filas: filas.map((f) => (f.__id === id ? { ...f, [col]: valor } : f)),
-      undoStack: [
-        ...undoStack,
-        { id, col, prev: valorSoloLectura(prev), next: valor },
-      ],
-      redoStack: [],
-      sucio: true,
     });
     programarAutoguardado();
   },
 
   deshacer: () => {
-    const { filas, undoStack, redoStack } = get();
-    if (undoStack.length === 0) return;
-    const cambio = undoStack[undoStack.length - 1];
+    const { pasado, filas, columnasExtra, futuro } = get();
+    if (pasado.length === 0) return;
+    const anterior = pasado[pasado.length - 1];
     set({
-      filas: aplicarCambio(filas, { ...cambio, next: cambio.prev }),
-      undoStack: undoStack.slice(0, -1),
-      redoStack: [...redoStack, cambio],
+      filas: anterior.filas,
+      columnasExtra: anterior.columnasExtra,
+      pasado: pasado.slice(0, -1),
+      futuro: [...futuro, { filas, columnasExtra }],
       sucio: true,
     });
     programarAutoguardado();
   },
 
   rehacer: () => {
-    const { filas, undoStack, redoStack } = get();
-    if (redoStack.length === 0) return;
-    const cambio = redoStack[redoStack.length - 1];
+    const { futuro, filas, columnasExtra, pasado } = get();
+    if (futuro.length === 0) return;
+    const siguiente = futuro[futuro.length - 1];
     set({
-      filas: aplicarCambio(filas, { ...cambio, next: cambio.next }),
-      undoStack: [...undoStack, cambio],
-      redoStack: redoStack.slice(0, -1),
+      filas: siguiente.filas,
+      columnasExtra: siguiente.columnasExtra,
+      pasado: [...pasado, { filas, columnasExtra }],
+      futuro: futuro.slice(0, -1),
       sucio: true,
     });
     programarAutoguardado();
   },
 
   revertirCelda: (id, col) => {
-    const { filas, guardadas, undoStack, redoStack } = get();
+    const { filas, guardadas } = get();
     const guardada = filaGuardada(guardadas, id);
     if (!guardada) return;
     const prev = guardada[col];
-    set({
+    registrarAccion(get, set, {
       filas: filas.map((f) => (f.__id === id ? { ...f, [col]: prev } : f)),
-      undoStack: undoStack.filter((c) => !(c.id === id && c.col === col)),
-      redoStack: redoStack.filter((c) => !(c.id === id && c.col === col)),
-      sucio: true,
     });
     programarAutoguardado();
   },
@@ -496,27 +497,22 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       ? { ...filaNueva(), ...nuevaFila, __id: nuevoIdFila() }
       : { ...filaNueva(), Fecha: fechaDeNuevaFila(filas) };
 
-    set({
+    registrarAccion(get, set, {
       // La añadimos al principio de la lista para que el usuario la vea inmediatamente
       filas: [nueva, ...filas],
       seleccion: { id: nueva.__id, col: "Fecha" },
-      sucio: true,
     });
     programarAutoguardado();
   },
 
   eliminarFilasSeleccionadas: () => {
-    const { filas, filasSeleccionadas, undoStack, redoStack, seleccion } =
-      get();
+    const { filas, filasSeleccionadas, seleccion } = get();
     if (filasSeleccionadas.length === 0) return;
     const ids = new Set(filasSeleccionadas);
-    set({
+    registrarAccion(get, set, {
       filas: filas.filter((f) => !ids.has(f.__id)),
-      undoStack: undoStack.filter((c) => !ids.has(c.id)),
-      redoStack: redoStack.filter((c) => !ids.has(c.id)),
       filasSeleccionadas: [],
       seleccion: seleccion && ids.has(seleccion.id) ? null : seleccion,
-      sucio: true,
     });
     programarAutoguardado();
   },
@@ -530,29 +526,25 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     if (columnasExtra.includes(limpio))
       return `La columna '${limpio}' ya existe.`;
 
-    set({
+    registrarAccion(get, set, {
       filas: filas.map((f) => ({ ...f, [limpio]: "" })),
       columnasExtra: [...columnasExtra, limpio],
-      sucio: true,
     });
     programarAutoguardado();
     return null;
   },
 
   eliminarColumna: (nombre) => {
-    const { filas, columnasExtra, undoStack, redoStack, seleccion } = get();
+    const { filas, columnasExtra, seleccion } = get();
     const sin = filas.map((f) => {
       const copia = { ...f };
       delete copia[nombre];
       return copia;
     });
-    set({
+    registrarAccion(get, set, {
       filas: sin,
       columnasExtra: columnasExtra.filter((c) => c !== nombre),
-      undoStack: undoStack.filter((c) => c.col !== nombre),
-      redoStack: redoStack.filter((c) => c.col !== nombre),
       seleccion: seleccion && seleccion.col === nombre ? null : seleccion,
-      sucio: true,
     });
     programarAutoguardado();
   },
@@ -591,14 +583,11 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   limpiarFilasSeleccionadas: () => set({ filasSeleccionadas: [] }),
   limpiarFlash: () => set({ flash: null }),
   eliminarFilasPorId: (ids) => {
-    const { filas, undoStack, redoStack, seleccion } = get();
+    const { filas, seleccion } = get();
     const idsSet = new Set(ids);
-    set({
+    registrarAccion(get, set, {
       filas: filas.filter((f) => !idsSet.has(f.__id)),
-      undoStack: undoStack.filter((c) => !idsSet.has(c.id)),
-      redoStack: redoStack.filter((c) => !idsSet.has(c.id)),
       seleccion: seleccion && idsSet.has(seleccion.id) ? null : seleccion,
-      sucio: true,
     });
     programarAutoguardado();
   },

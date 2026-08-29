@@ -129,6 +129,8 @@ export function EditorScreen() {
                   eliminarColumna(col);
                 });
               }}
+              onUndo={deshacer}
+              onRedo={rehacer}
             />
           </View>
         )}

@@ -5,6 +5,8 @@ interface Props {
   onCellChange: (id: string, columna: string, valor: any) => void;
   onRowsRemove?: (ids: string[]) => void;
   onColumnRemove?: (columnas: string[]) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export function HandsontableGrid({
@@ -12,6 +14,8 @@ export function HandsontableGrid({
   onCellChange,
   onRowsRemove,
   onColumnRemove,
+  onUndo,
+  onRedo,
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -361,6 +365,7 @@ export function HandsontableGrid({
             contextMenu: false,
             licenseKey: 'non-commercial-and-evaluation',
             outsideClickDeselects: true,
+            undo: false, // deshabilitamos el undo interno; lo gestiona la app (máx. 7)
             
             beforeChange: function(changes, source) {
               if (!changes) return;
@@ -431,6 +436,23 @@ export function HandsontableGrid({
             },
             
             beforeKeyDown: function(event) {
+              // Ctrl/Cmd+Z → deshacer; Ctrl/Cmd+Y o Ctrl/Cmd+Shift+Z → rehacer.
+              if (event.ctrlKey || event.metaKey) {
+                const tecla = (event.key || '').toLowerCase();
+                if (tecla === 'z' || tecla === 'y') {
+                  const esRedo = tecla === 'y' || (tecla === 'z' && event.shiftKey);
+                  event.preventDefault();
+                  event.stopImmediatePropagation();
+                  if (window.parent) {
+                    window.parent.postMessage(
+                      JSON.stringify({ tipo: esRedo ? 'REDO' : 'UNDO' }),
+                      "*"
+                    );
+                  }
+                  return;
+                }
+              }
+
               if (event.key === 'Delete' || event.key === 'Backspace') {
                 const selected = hotInstance.getSelected() || [];
                 const totalRows = hotInstance.countRows();
@@ -537,12 +559,18 @@ export function HandsontableGrid({
           if (data.tipo === "COLS_REMOVED" && onColumnRemove) {
             onColumnRemove(data.payload);
           }
+          if (data.tipo === "UNDO" && onUndo) {
+            onUndo();
+          }
+          if (data.tipo === "REDO" && onRedo) {
+            onRedo();
+          }
         }
       } catch (e) {}
     };
     window.addEventListener("message", handleWebMessage);
     return () => window.removeEventListener("message", handleWebMessage);
-  }, [onCellChange, onRowsRemove, onColumnRemove]);
+  }, [onCellChange, onRowsRemove, onColumnRemove, onUndo, onRedo]);
 
   useEffect(() => {
     const handleClickOutside = () => {

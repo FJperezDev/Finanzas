@@ -240,18 +240,58 @@ export async function saldarDeudaMock(payload: {
   }
 
   const neto = meDeben - leDebo;
-  if (Math.abs(neto) <= 0.01) {
-    return { importe: 0, tipo: null, perdonado: !payload.registrar_transaccion };
+  const perdonar = !payload.registrar_transaccion;
+
+  const importeA = payload.importe ?? Math.abs(neto);
+
+  // PERDÓN: se salda sin dinero y sin volcar el saldo.
+  if (perdonar) {
+    const saldado = Math.min(importeA, Math.abs(neto));
+    let restante = saldado;
+    if (neto > 0) {
+      for (const g of gastos) {
+        if (restante <= 0) break;
+        if (g.pagador_id !== null) continue;
+        for (const p of g.participaciones) {
+          if (restante <= 0) break;
+          if (p.contacto_id !== payload.contacto_id) continue;
+          const pendiente = pendienteDe(p);
+          if (pendiente <= 0) continue;
+          const aplicar = Math.min(restante, pendiente);
+          p.importe_saldado = (p.importe_saldado ?? 0) + aplicar;
+          p.saldado = p.importe_saldado >= p.importe_debido;
+          p.perdonado = true;
+          restante -= aplicar;
+        }
+      }
+    } else if (neto < 0) {
+      for (const g of gastos) {
+        if (restante <= 0) break;
+        if (g.pagador_id !== payload.contacto_id) continue;
+        const miParte = g.importe_total - g.participaciones.reduce((a, p) => a + p.importe_debido, 0);
+        const saldada = g.mi_parte_saldada_importe ?? (g.mi_parte_saldada ? miParte : 0);
+        const pendiente = Math.max(miParte - saldada, 0);
+        if (pendiente <= 0) continue;
+        const aplicar = Math.min(restante, pendiente);
+        g.mi_parte_saldada_importe = saldada + aplicar;
+        g.mi_parte_saldada = g.mi_parte_saldada_importe >= miParte;
+        g.mi_parte_perdonada = true;
+        restante -= aplicar;
+      }
+    }
+    return { importe: saldado, tipo: null, perdonado: true };
   }
 
-  const importeASaldar = Math.min(
-    payload.importe ?? Math.abs(neto),
-    Math.abs(neto),
-  );
-  const perdonar = !payload.registrar_transaccion;
-  let restante = importeASaldar;
+  // TRANSFERENCIA: el exceso vuelca el saldo.
+  if (importeA <= 0) {
+    return { importe: 0, tipo: null, perdonado: false };
+  }
 
-  if (neto > 0) {
+  let restante = importeA;
+  let exceso = 0;
+  const tipo: "Ingreso" | "Gasto" = neto >= 0 ? "Ingreso" : "Gasto";
+
+  if (neto >= 0) {
     for (const g of gastos) {
       if (restante <= 0) break;
       if (g.pagador_id !== null) continue;
@@ -263,45 +303,80 @@ export async function saldarDeudaMock(payload: {
         const aplicar = Math.min(restante, pendiente);
         p.importe_saldado = (p.importe_saldado ?? 0) + aplicar;
         p.saldado = p.importe_saldado >= p.importe_debido;
-        if (perdonar) p.perdonado = true;
         restante -= aplicar;
       }
+    }
+    exceso = restante;
+    if (exceso > 0.01) {
+      gastos.push({
+        id: nuevoIdGasto(gastos),
+        concepto: "Saldo a favor",
+        fecha: new Date().toISOString().split("T")[0],
+        importe_total: exceso,
+        categoria_macro: "Deuda",
+        subcategoria: "Saldar",
+        tipo_reparto: "EXACTO",
+        pagador_id: payload.contacto_id,
+        mi_parte_saldada: false,
+        mi_parte_saldada_importe: 0,
+        mi_parte_perdonada: false,
+        participaciones: [],
+      });
     }
   } else {
     for (const g of gastos) {
       if (restante <= 0) break;
       if (g.pagador_id !== payload.contacto_id) continue;
-      const sumaOtros = g.participaciones.reduce(
-        (acc, p) => acc + p.importe_debido,
-        0,
-      );
-      const miParte = g.importe_total - sumaOtros;
-      const saldada =
-        g.mi_parte_saldada_importe ?? (g.mi_parte_saldada ? miParte : 0);
+      const miParte = g.importe_total - g.participaciones.reduce((a, p) => a + p.importe_debido, 0);
+      const saldada = g.mi_parte_saldada_importe ?? (g.mi_parte_saldada ? miParte : 0);
       const pendiente = Math.max(miParte - saldada, 0);
       if (pendiente <= 0) continue;
       const aplicar = Math.min(restante, pendiente);
       g.mi_parte_saldada_importe = saldada + aplicar;
       g.mi_parte_saldada = g.mi_parte_saldada_importe >= miParte;
-      if (perdonar) g.mi_parte_perdonada = true;
       restante -= aplicar;
+    }
+    exceso = restante;
+    if (exceso > 0.01) {
+      gastos.push({
+        id: nuevoIdGasto(gastos),
+        concepto: "Saldo a tu favor",
+        fecha: new Date().toISOString().split("T")[0],
+        importe_total: exceso,
+        categoria_macro: "Deuda",
+        subcategoria: "Saldar",
+        tipo_reparto: "EXACTO",
+        pagador_id: null,
+        mi_parte_saldada: false,
+        mi_parte_saldada_importe: 0,
+        mi_parte_perdonada: false,
+        participaciones: [
+          {
+            contacto_id: payload.contacto_id,
+            importe_debido: exceso,
+            importe_saldado: 0,
+            saldado: false,
+            perdonado: false,
+          },
+        ],
+      });
     }
   }
 
-  const tipo: "Ingreso" | "Gasto" = neto > 0 ? "Ingreso" : "Gasto";
+  const filas = cargarMemoria();
+  filas.push({
+    __id: `mock_tx_saldar_${Date.now()}`,
+    Fecha: new Date().toISOString().split("T")[0],
+    Tipo: tipo,
+    Categoria_Macro: "Deuda",
+    Subcategoria: "Saldar",
+    Concepto: "Saldar cuentas",
+    Importe: importeA,
+  });
 
-  if (payload.registrar_transaccion) {
-    const filas = cargarMemoria();
-    filas.push({
-      __id: `mock_tx_saldar_${Date.now()}`,
-      Fecha: new Date().toISOString().split("T")[0],
-      Tipo: tipo,
-      Categoria_Macro: "Deuda",
-      Subcategoria: "Saldar",
-      Concepto: "Saldar cuentas",
-      Importe: importeASaldar,
-    });
-  }
+  return { importe: importeA, tipo, perdonado: false };
+}
 
-  return { importe: importeASaldar, tipo, perdonado: perdonar };
+function nuevoIdGasto(gastos: GastoCompartido[]): number {
+  return gastos.length > 0 ? Math.max(...gastos.map((g) => g.id)) + 1 : 1;
 }

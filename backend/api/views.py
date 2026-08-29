@@ -669,18 +669,19 @@ def _pendiente_mi_parte(gasto: GastoCompartido) -> Decimal:
 @require_POST
 @requiere_token
 def saldar_gasto_compartido(request) -> JsonResponse:
-    """Salda (parcial o totalmente) la deuda cruzada con un contacto.
+    """Salda cuentas con un contacto: transferencia (pago/cobro) o perdón.
 
     Body:
       - contacto_id (obligatorio)
-      - importe (opcional): cantidad a saldar; por defecto, el saldo neto.
-      - registrar_transaccion (bool, defecto True): si es True se crea la
-        transacción espejo (ingreso si te deben, gasto si debes). Si es
-        False la cantidad se considera "perdonada" (sin movimiento de dinero).
+      - importe (opcional): dinero que cambia de manos. Por defecto, el saldo
+        neto. Si supera el saldo, el exceso vuelca la balanza: si te pagan de
+        más pasas a deberles, y si pagas de más ellos pasan a deberte.
+      - registrar_transaccion (bool, defecto True): si True se registra la
+        transacción espejo (ingreso si te pagan, gasto si pagas). Si False la
+        cantidad se considera "perdonada": se salda sin mover dinero (y no se
+        vuelca la balanza).
 
-    El saldo se aplica de forma FIFO: primero las participaciones más
-    antiguas (lo que te deben) o tu parte en los gastos más antiguos (lo
-    que debes), según corresponda.
+    El saldo se aplica FIFO: primero lo más antiguo.
     """
     try:
         cuerpo = json.loads(request.body.decode("utf-8"))
@@ -737,74 +738,146 @@ def saldar_gasto_compartido(request) -> JsonResponse:
         le_debo = sum((_pendiente_mi_parte(g) for g in gastos_ajenos), Decimal("0.00"))
         neto = me_deben - le_debo
 
-        if neto == 0:
+        perdonar = not registrar_transaccion
+
+        # ------------------------------------------------------------------
+        # PERDÓN: se salda sin mover dinero y sin volcar la balanza.
+        # ------------------------------------------------------------------
+        if perdonar:
+            importe_a = min(
+                importe_solicitado if importe_solicitado is not None else abs(neto),
+                abs(neto),
+            )
+            restante = importe_a
+            if neto > 0:
+                for p in participaciones:
+                    if restante <= 0:
+                        break
+                    aplicar = min(restante, p.pendiente)
+                    p.importe_saldado += aplicar
+                    p.saldado = p.importe_saldado >= p.importe_debido
+                    p.perdonado = True
+                    p.save(update_fields=["importe_saldado", "saldado", "perdonado"])
+                    restante -= aplicar
+            elif neto < 0:
+                for g in gastos_ajenos:
+                    if restante <= 0:
+                        break
+                    aplicar = min(restante, _pendiente_mi_parte(g))
+                    g.mi_parte_saldada_importe += aplicar
+                    g.mi_parte_saldada = (
+                        g.mi_parte_saldada_importe >= _mi_parte_inferida(g)
+                    )
+                    g.mi_parte_perdonada = True
+                    g.save(
+                        update_fields=[
+                            "mi_parte_saldada_importe",
+                            "mi_parte_saldada",
+                            "mi_parte_perdonada",
+                        ]
+                    )
+                    restante -= aplicar
+
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "importe": float(importe_a),
+                    "tipo": None,
+                    "perdonado": True,
+                    "exceso": 0.0,
+                    "transaccion": None,
+                }
+            )
+
+        # ------------------------------------------------------------------
+        # TRANSFERENCIA: el dinero cambia de manos; el exceso vuelca el saldo.
+        # ------------------------------------------------------------------
+        importe_a = (
+            importe_solicitado if importe_solicitado is not None else abs(neto)
+        )
+        if importe_a <= 0:
             return JsonResponse(
                 {
                     "ok": True,
                     "importe": 0.0,
                     "tipo": None,
-                    "perdonado": not registrar_transaccion,
+                    "perdonado": False,
+                    "exceso": 0.0,
                     "transaccion": None,
                 }
             )
 
-        importe_a_saldar = min(
-            importe_solicitado if importe_solicitado is not None else abs(neto),
-            abs(neto),
-        )
-        perdonar = not registrar_transaccion
-        restante = importe_a_saldar
+        exceso = Decimal("0.00")
+        tipo = "Ingreso" if neto >= 0 else "Gasto"
 
-        if neto > 0:
-            # El contacto te debe: aplicamos sobre sus participaciones.
+        if neto >= 0:
+            # Te pagan: primero saldan lo que te deben…
+            restante = importe_a
             for p in participaciones:
                 if restante <= 0:
                     break
                 aplicar = min(restante, p.pendiente)
                 p.importe_saldado += aplicar
                 p.saldado = p.importe_saldado >= p.importe_debido
-                if perdonar:
-                    p.perdonado = True
-                p.save(update_fields=["importe_saldado", "saldado", "perdonado"])
+                p.save(update_fields=["importe_saldado", "saldado"])
                 restante -= aplicar
+            exceso = restante
+            # …y si pagan de más, pasas a deberles.
+            if exceso > 0:
+                GastoCompartido.objects.create(
+                    concepto=f"Saldo a favor de {contacto.nombre}",
+                    fecha=timezone.localdate(),
+                    importe_total=exceso,
+                    categoria_macro="Deuda",
+                    subcategoria="Saldar",
+                    tipo_reparto="EXACTO",
+                    pagador=contacto,
+                )
         else:
-            # Le debes al contacto: aplicamos sobre tu parte inferida.
+            # Pagas: primero saldas lo que les debes…
+            restante = importe_a
             for g in gastos_ajenos:
                 if restante <= 0:
                     break
                 aplicar = min(restante, _pendiente_mi_parte(g))
                 g.mi_parte_saldada_importe += aplicar
                 g.mi_parte_saldada = g.mi_parte_saldada_importe >= _mi_parte_inferida(g)
-                if perdonar:
-                    g.mi_parte_perdonada = True
-                g.save(
-                    update_fields=[
-                        "mi_parte_saldada_importe",
-                        "mi_parte_saldada",
-                        "mi_parte_perdonada",
-                    ]
-                )
+                g.save(update_fields=["mi_parte_saldada_importe", "mi_parte_saldada"])
                 restante -= aplicar
+            exceso = restante
+            # …y si pagas de más, ellos pasan a deberte.
+            if exceso > 0:
+                gasto = GastoCompartido.objects.create(
+                    concepto="Saldo a tu favor",
+                    fecha=timezone.localdate(),
+                    importe_total=exceso,
+                    categoria_macro="Deuda",
+                    subcategoria="Saldar",
+                    tipo_reparto="EXACTO",
+                    pagador=None,
+                )
+                Participacion.objects.create(
+                    gasto=gasto, contacto=contacto, importe_debido=exceso
+                )
 
         transaccion_id = None
-        tipo = "Ingreso" if neto > 0 else "Gasto"
-        if registrar_transaccion:
-            tx = Transaccion.objects.create(
-                fecha=timezone.localdate(),
-                tipo=tipo,
-                categoria_macro="Deuda",
-                subcategoria="Saldar",
-                concepto=f"Saldar cuentas con {contacto.nombre}",
-                importe=importe_entero(float(importe_a_saldar)),
-            )
-            transaccion_id = tx.id
+        tx = Transaccion.objects.create(
+            fecha=timezone.localdate(),
+            tipo=tipo,
+            categoria_macro="Deuda",
+            subcategoria="Saldar",
+            concepto=f"Saldar cuentas con {contacto.nombre}",
+            importe=importe_entero(float(importe_a)),
+        )
+        transaccion_id = tx.id
 
     return JsonResponse(
         {
             "ok": True,
-            "importe": float(importe_a_saldar),
+            "importe": float(importe_a),
             "tipo": tipo,
-            "perdonado": perdonar,
+            "perdonado": False,
+            "exceso": float(exceso),
             "transaccion": transaccion_id,
         }
     )
