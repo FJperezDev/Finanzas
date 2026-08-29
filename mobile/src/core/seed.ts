@@ -173,3 +173,94 @@ export function generarFilasSeed(): FilaSeed[] {
 }
 
 export const SEED_COLUMNAS = COLUMNAS_EXCEL;
+
+// ---------------------------------------------------------------------------
+// Semilla de Deudas / Gastos Compartidos
+// ---------------------------------------------------------------------------
+export interface ContactoSeed {
+  id: number;
+  nombre: string;
+  telefono: string;
+  correo: string | null;
+  icono: string | null;
+}
+
+export function generarContactosSeed(): ContactoSeed[] {
+  return [
+    {
+      id: 1,
+      nombre: "Ana",
+      telefono: "+34611222333",
+      correo: "ana@example.com",
+      icono: null,
+    },
+    {
+      id: 2,
+      nombre: "Carlos",
+      telefono: "+34644555666",
+      correo: "carlos@example.com",
+      icono: null,
+    },
+    {
+      id: 3,
+      nombre: "Bea",
+      telefono: "+34677888999",
+      correo: "bea@example.com",
+      icono: null,
+    },
+  ];
+}
+
+export function generarGastosCompartidosSeed() {
+  return [
+    {
+      id: 1,
+      concepto: "Cena Pizzería",
+      fecha: "2025-08-15",
+      importe_total: 60.0,
+      categoria_macro: "Ocio",
+      subcategoria: "Restaurantes",
+      tipo_reparto: "IGUALES" as const,
+      pagador_id: null, // Pagaste tú
+      mi_parte_saldada: false,
+      mi_parte_saldada_importe: 0,
+      participaciones: [
+        { contacto_id: 1, importe_debido: 20.0, importe_saldado: 0 },
+        { contacto_id: 2, importe_debido: 20.0, importe_saldado: 0 },
+      ],
+    },
+    {
+      id: 2,
+      concepto: "Regalo de Boda",
+      fecha: "2025-09-20",
+      importe_total: 150.0,
+      categoria_macro: "Regalo",
+      subcategoria: "Amigos",
+      tipo_reparto: "EXACTO" as const,
+      pagador_id: 1, // Pagó Ana
+      mi_parte_saldada: false,
+      mi_parte_saldada_importe: 0,
+      participaciones: [
+        { contacto_id: 2, importe_debido: 50.0, importe_saldado: 0 },
+        { contacto_id: 3, importe_debido: 50.0, importe_saldado: 0 },
+      ],
+    },
+    {
+      id: 3,
+      concepto: "Airbnb Viaje",
+      fecha: "2026-01-05",
+      importe_total: 240.0,
+      categoria_macro: "Ocio",
+      subcategoria: "Viajes",
+      tipo_reparto: "IGUALES" as const,
+      pagador_id: null, // Pagaste tú
+      mi_parte_saldada: false,
+      mi_parte_saldada_importe: 0,
+      participaciones: [
+        { contacto_id: 1, importe_debido: 60.0, importe_saldado: 0 },
+        { contacto_id: 2, importe_debido: 60.0, importe_saldado: 0 },
+        { contacto_id: 3, importe_debido: 60.0, importe_saldado: 0 },
+      ],
+    },
+  ];
+}

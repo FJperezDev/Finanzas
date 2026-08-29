@@ -43,7 +43,8 @@ export function Header({ navigation, route, options }: DrawerHeaderProps) {
   return (
     <View style={[styles.contenedor, { paddingTop: insets.top }]}>
       <View style={styles.barra}>
-        {/* IZQUIERDA: Home / Dashboard (Tu nuevo Logo) */}        <Pressable
+        {/* IZQUIERDA: Home / Dashboard (Tu nuevo Logo) */}
+        <Pressable
           style={({ pressed }) => [
             styles.botonIcono,
             pressed && styles.botonIconoActivo,
@@ -114,8 +115,7 @@ export function Header({ navigation, route, options }: DrawerHeaderProps) {
             <Pressable
               style={({ pressed }) => [
                 styles.botonIcono,
-                (pressed || menuOpcionesVisible) &&
-                  styles.botonIconoActivo,
+                (pressed || menuOpcionesVisible) && styles.botonIconoActivo,
               ]}
               onPress={() => setMenuOpcionesVisible(true)}
               accessibilityLabel="Opciones extras"
@@ -132,10 +132,7 @@ export function Header({ navigation, route, options }: DrawerHeaderProps) {
               <>
                 {/* Overlay invisible para cerrar el menú al hacer clic fuera (Web) */}
                 {Platform.OS === "web" ? (
-                  <Pressable
-                    style={styles.overlayWeb}
-                    onPress={cerrarMenu}
-                  />
+                  <Pressable style={styles.overlayWeb} onPress={cerrarMenu} />
                 ) : null}
 
                 <View style={styles.dropdown}>
@@ -173,7 +170,10 @@ export function Header({ navigation, route, options }: DrawerHeaderProps) {
                         color={colors.peligro}
                       />
                       <Text
-                        style={[styles.dropdownTexto, { color: colors.peligro }]}
+                        style={[
+                          styles.dropdownTexto,
+                          { color: colors.peligro },
+                        ]}
                       >
                         Cerrar sesión
                       </Text>

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,11 +7,15 @@ import {
   Text,
   useWindowDimensions,
   View,
+  TouchableOpacity,
+  Modal,
+  TextInput,
 } from "react-native";
 
 import { BarrasComparativa } from "../components/charts/BarrasComparativa";
 import { DonutDistribucion } from "../components/charts/DonutDistribucion";
 import { FlujoChart } from "../components/charts/FlujoChart";
+import { ContactosModal } from "../components/ContactosModal";
 import { TarjetaPilar } from "../components/charts/TarjetaPilar";
 import {
   SelectorAlcance,
@@ -31,20 +35,31 @@ import {
   esTransferenciaInversion,
   flujoDeCajaMensual,
   patrimonioAcumulado,
+  type BalanceContacto, // Importamos el tipo para el estado
 } from "../core/calculations";
 import { UMBRAL_FIJOS_ALERTA } from "../core/config";
-import { etiquetaPeriodo, fmtEur, fmtPct, nombreMes } from "../core/formatos";
-import { useTransacciones } from "../hooks/useTransacciones";
+import {
+  etiquetaPeriodo,
+  fmtEur,
+  fmtEurSigno,
+  fmtPct,
+  nombreMes,
+} from "../core/formatos";
+import { useTransacciones, useDeudas } from "../hooks/useTransacciones";
 import { colors } from "../theme";
 
 export function DashboardScreen() {
   const { cargando, error, filas } = useTransacciones();
+  const { balances, cargando: cargandoDeudas } = useDeudas();
   const { width } = useWindowDimensions();
-  const esDesktop = width > 768; // Breakpoint para Web
+  const esDesktop = width > 768;
 
-  // -------------------------------------------------------------------------
-  // Periodos disponibles y alcance seleccionado (Mes / Año / Todo)
-  // -------------------------------------------------------------------------
+  const [modalContactosVisible, setModalContactosVisible] = useState(false);
+
+  // Estado para saber qué deuda hemos tocado para saldarla
+  const [deudaSeleccionada, setDeudaSeleccionada] =
+    useState<BalanceContacto | null>(null);
+
   const periodos = useMemo(() => {
     const set = new Set<string>();
     for (const f of filas) {
@@ -66,31 +81,25 @@ export function DashboardScreen() {
   const [periodo, setPeriodo] = useState<string | null>(null);
   const [anioSeleccionado, setAnioSeleccionado] = useState<number | null>(null);
 
-  // Por defecto: el periodo más reciente disponible.
   const periodoActivo = periodo ?? periodos[periodos.length - 1] ?? null;
   const anioActivo = anioSeleccionado ?? anios[anios.length - 1] ?? null;
 
-  // Filas dentro del alcance (mes concreto / año concreto / todo).
   const dfAlcance = useMemo(() => {
-    if (alcance === "mes") {
+    if (alcance === "mes")
       return filas.filter((f) => f.Fecha.startsWith(periodoActivo ?? "____"));
-    }
-    if (alcance === "anio") {
+    if (alcance === "anio")
       return filas.filter((f) =>
         f.Fecha.startsWith(String(anioActivo ?? "____")),
       );
-    }
     return filas;
   }, [filas, alcance, periodoActivo, anioActivo]);
 
-  // Fecha límite del alcance para el patrimonio acumulado.
   const limiteAlcance = useMemo(() => {
     if (alcance === "mes" && periodoActivo) return `${periodoActivo}-31`;
     if (alcance === "anio" && anioActivo != null) return `${anioActivo}-12-31`;
     return null;
   }, [alcance, periodoActivo, anioActivo]);
 
-  // Filas acumuladas hasta el final del alcance (para el hero de patrimonio).
   const dfHasta = useMemo(
     () =>
       limiteAlcance == null
@@ -99,14 +108,11 @@ export function DashboardScreen() {
     [filas, limiteAlcance],
   );
 
-  // -------------------------------------------------------------------------
-  // KPIs del alcance
-  // -------------------------------------------------------------------------
   const kpis = useMemo(() => {
-    let ingresos = 0;
-    let gastos = 0;
-    let fijo = 0;
-    let ocio = 0;
+    let ingresos = 0,
+      gastos = 0,
+      fijo = 0,
+      ocio = 0;
     const meses = new Set<string>();
 
     for (const f of dfAlcance) {
@@ -136,13 +142,6 @@ export function DashboardScreen() {
     };
   }, [dfAlcance]);
 
-  // -------------------------------------------------------------------------
-  // Patrimonio acumulado hasta el final del alcance
-  //
-  // Los gastos de 'Inversión' son transferencias a otras cuentas (cartera o
-  // cuenta remunerada): no restan del balance corriente, se suman como
-  // aportado. Solo 'Marca Personal' es un gasto real que resta.
-  // -------------------------------------------------------------------------
   const patrimonio = useMemo(() => {
     const p = patrimonioAcumulado(dfHasta);
     return {
@@ -153,9 +152,15 @@ export function DashboardScreen() {
     };
   }, [dfHasta]);
 
-  // -------------------------------------------------------------------------
-  // Distribución 50/30/20 y flujo de caja del alcance
-  // -------------------------------------------------------------------------
+  const resumenDeudas = useMemo(() => {
+    const deudores = balances
+      .filter((b) => b.balanceNeto !== 0)
+      .sort((a, b) => b.balanceNeto - a.balanceNeto);
+    const balanceGlobal = deudores.reduce((acc, b) => acc + b.balanceNeto, 0);
+    const liquidezProyectada = patrimonio.balanceCorriente + balanceGlobal;
+    return { deudores, balanceGlobal, liquidezProyectada };
+  }, [balances, patrimonio.balanceCorriente]);
+
   const distribucion = useMemo(() => {
     const gastos = dfAlcance.filter((f) => f.Tipo === "Gasto");
     const ingresosTotales = dfAlcance
@@ -164,8 +169,6 @@ export function DashboardScreen() {
     return distribucion503020(gastos, ingresosTotales);
   }, [dfAlcance]);
 
-  // En "mes" el gráfico conserva todo el histórico y resalta el mes elegido;
-  // en "año"/"todo" muestra exactamente el alcance seleccionado.
   const { datosFlujo, destacadaFlujo } = useMemo(() => {
     const base = alcance === "mes" ? filas : dfAlcance;
     const destacada =
@@ -186,46 +189,37 @@ export function DashboardScreen() {
     };
   }, [alcance, filas, dfAlcance, periodoActivo]);
 
-  // -------------------------------------------------------------------------
-  // Etiquetas e insight según el alcance
-  // -------------------------------------------------------------------------
   const etiquetaMes = periodoActivo
     ? `${nombreMes(Number(periodoActivo.slice(5, 7)))} ${periodoActivo.slice(0, 4)}`
     : "—";
-
   const etiquetaHero =
     alcance === "mes" && periodoActivo
       ? `Patrimonio a final de ${etiquetaMes}`
       : alcance === "anio" && anioActivo != null
         ? `Patrimonio a final de ${anioActivo}`
         : "Patrimonio Neto Total";
-
   const tituloFlujo =
     alcance === "mes"
       ? `Flujo Mensual: ${etiquetaMes}`
       : alcance === "anio"
         ? `Resumen Anual ${anioActivo}`
         : "Resumen Histórico";
-
   const tituloDistribucion =
     alcance === "anio"
       ? `Distribución 50/30/20 · ${anioActivo}`
       : alcance === "mes" && periodoActivo
         ? `Distribución 50/30/20 · ${etiquetaMes}`
         : "Distribución 50/30/20";
-
   const tituloHistorico =
     alcance === "anio"
       ? `Histórico de Caja · ${anioActivo}`
       : "Histórico de Caja";
-
   const textoVacio =
     alcance === "mes"
       ? "Aún no hay transacciones en este mes."
       : alcance === "anio"
         ? `Aún no hay transacciones en ${anioActivo}.`
         : "Aún no hay transacciones en tu histórico.";
-
   const resumenAlcance =
     alcance === "mes"
       ? `${kpis.movimientos} movimientos`
@@ -259,13 +253,12 @@ export function DashboardScreen() {
     };
   };
 
-  // --- ESTADOS DE PANTALLA ---
-  if (cargando)
+  if (cargando || cargandoDeudas)
     return (
       <View style={styles.centrado}>
         <ActivityIndicator size="large" color={colors.primario} />
         <Text style={[styles.estadoTexto, { marginTop: 12 }]}>
-          Cargando transacciones…
+          Cargando transacciones y deudas…
         </Text>
       </View>
     );
@@ -303,6 +296,17 @@ export function DashboardScreen() {
       style={styles.pantalla}
       contentContainerStyle={styles.contenido}
     >
+      <ContactosModal
+        visible={modalContactosVisible}
+        onClose={() => setModalContactosVisible(false)}
+      />
+
+      {/* MODAL PARA SALDAR DEUDAS */}
+      <ModalSaldarDeuda
+        balance={deudaSeleccionada}
+        onClose={() => setDeudaSeleccionada(null)}
+      />
+
       <SelectorAlcance alcance={alcance} onCambiar={setAlcance} />
       {alcance === "mes" && (
         <SelectorPeriodos
@@ -326,7 +330,6 @@ export function DashboardScreen() {
         </View>
       )}
 
-      {/* HERO SECTION: PATRIMONIO */}
       <View style={styles.heroContainer}>
         <Text style={styles.heroEtiqueta}>{etiquetaHero}</Text>
         <View style={styles.heroValorRow}>
@@ -334,7 +337,6 @@ export function DashboardScreen() {
         </View>
       </View>
 
-      {/* LOS 3 PILARES FINANCIEROS */}
       <View
         style={[styles.gridPilares, esDesktop && styles.gridPilaresDesktop]}
       >
@@ -364,10 +366,100 @@ export function DashboardScreen() {
         />
       </View>
 
-      {/* Tarjeta Resumen del Alcance con Empty State */}
+      <View style={{ marginBottom: 24 }}>
+        <Tarjeta>
+          <View style={styles.cabeceraDeudas}>
+            <TituloSeccion>Deudas Pendientes</TituloSeccion>
+            <TouchableOpacity
+              onPress={() => setModalContactosVisible(true)}
+              style={{ padding: 4 }}
+            >
+              <Ionicons
+                name="ellipsis-horizontal"
+                size={20}
+                color={colors.textoSuave}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.cajaLiquidez}>
+            <Text style={styles.txtLiquidez}>
+              Liquidez actual:{" "}
+              <Text style={{ color: colors.texto }}>
+                {fmtEur(patrimonio.balanceCorriente)}
+              </Text>
+            </Text>
+            <Text style={styles.txtLiquidez}>
+              Balance tras deudas:{" "}
+              <Text
+                style={{
+                  color:
+                    resumenDeudas.balanceGlobal >= 0
+                      ? colors.exito
+                      : colors.peligro,
+                }}
+              >
+                {fmtEur(resumenDeudas.liquidezProyectada)}
+              </Text>
+            </Text>
+          </View>
+
+          <View style={styles.separador} />
+
+          {resumenDeudas.deudores.length === 0 ? (
+            <Text
+              style={{
+                color: colors.textoSuave,
+                fontSize: 14,
+                textAlign: "center",
+                paddingVertical: 12,
+              }}
+            >
+              ¡Cuentas claras! No tienes deudas pendientes.
+            </Text>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {resumenDeudas.deudores.map((b) => (
+                <TouchableOpacity
+                  key={b.contacto.id}
+                  style={styles.filaDeuda}
+                  onPress={() => setDeudaSeleccionada(b)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.nombreDeuda}>{b.contacto.nombre}</Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.valorDeuda,
+                        {
+                          color:
+                            b.balanceNeto > 0 ? colors.exito : colors.peligro,
+                        },
+                      ]}
+                    >
+                      {fmtEurSigno(b.balanceNeto)}
+                    </Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={16}
+                      color={colors.textoMuySuave}
+                    />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </Tarjeta>
+      </View>
+
       <Tarjeta>
         <TituloSeccion>{tituloFlujo}</TituloSeccion>
-
         {alcanceVacio ? (
           <View style={{ padding: 40, alignItems: "center" }}>
             <Ionicons
@@ -431,7 +523,6 @@ export function DashboardScreen() {
                 />
               </View>
             </View>
-
             <View style={styles.separador} />
             <Text style={styles.etiquetaBarra}>
               Presión de Gastos Fijos ({fmtPct(kpis.ratioFijos)})
@@ -448,12 +539,11 @@ export function DashboardScreen() {
         )}
       </Tarjeta>
 
-      {/* GRAFICOS EN GRID PARA WEB */}
       {!alcanceVacio && (
         <View
           style={[styles.gridGraficos, esDesktop && styles.gridGraficosDesktop]}
         >
-          <View style={esDesktop && { flex: 1 }}>
+          <View style={[esDesktop && { flex: 1 }]}>
             <Tarjeta style={{ height: "100%" }}>
               <TituloSeccion>{tituloDistribucion}</TituloSeccion>
               <DonutDistribucion
@@ -474,7 +564,7 @@ export function DashboardScreen() {
             </Tarjeta>
           </View>
 
-          <View style={esDesktop && { flex: 1 }}>
+          <View style={[esDesktop && { flex: 1 }]}>
             <Tarjeta style={{ height: "100%" }}>
               <TituloSeccion>{tituloHistorico}</TituloSeccion>
               <FlujoChart datos={datosFlujo} destacada={destacadaFlujo} />
@@ -486,6 +576,142 @@ export function DashboardScreen() {
   );
 }
 
+// ============================================================================
+// COMPONENTE: MODAL PARA SALDAR DEUDAS
+// ============================================================================
+function ModalSaldarDeuda({
+  balance,
+  onClose,
+}: {
+  balance: BalanceContacto | null;
+  onClose: () => void;
+}) {
+  const { saldarDeuda } = useDeudas();
+
+  const [cantidad, setCantidad] = useState("");
+  const [generarMovimiento, setGenerarMovimiento] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (balance) {
+      setCantidad(Math.abs(balance.balanceNeto).toFixed(2));
+      setGenerarMovimiento(true); // Checkbox marcado por defecto
+    }
+  }, [balance]);
+
+  if (!balance) return null;
+
+  const soyDeudor = balance.balanceNeto < 0;
+
+  const handleGuardar = async () => {
+    const importe = parseFloat(cantidad.replace(",", "."));
+    if (isNaN(importe) || importe <= 0) return;
+    setGuardando(true);
+    try {
+      // El backend salda (total o parcialmente) la deuda con el contacto y,
+      // si se pide, registra la transacción espejo. Si no se registra el
+      // movimiento, la cantidad se considera "perdonada".
+      await saldarDeuda({
+        contacto_id: balance.contacto.id,
+        importe,
+        registrar_transaccion: generarMovimiento,
+      });
+      onClose();
+    } catch (e) {
+      // El error ya se gestiona en el store global (flash).
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <Modal visible={!!balance} animationType="fade" transparent>
+      <View style={styles.overlayModalSaldar}>
+        <View style={styles.cajaModalSaldar}>
+          <View style={styles.cabeceraSaldar}>
+            <TituloSeccion style={{ marginBottom: 0 }}>
+              Saldar Cuentas
+            </TituloSeccion>
+            <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+              <Ionicons name="close" size={24} color={colors.textoSuave} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.textoInfoSaldar}>
+            {soyDeudor
+              ? `Le debes a ${balance.contacto.nombre} `
+              : `${balance.contacto.nombre} te debe `}
+            <Text
+              style={{
+                color: soyDeudor ? colors.peligro : colors.exito,
+                fontWeight: "700",
+              }}
+            >
+              {fmtEur(Math.abs(balance.balanceNeto))}
+            </Text>
+          </Text>
+
+          <Text style={styles.labelSaldar}>Cantidad a saldar (€)</Text>
+          <TextInput
+            style={styles.inputSaldar}
+            value={cantidad}
+            onChangeText={setCantidad}
+            keyboardType="numeric"
+          />
+
+          <TouchableOpacity
+            style={styles.btnCheckSaldar}
+            onPress={() => setGenerarMovimiento(!generarMovimiento)}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={generarMovimiento ? "checkbox" : "square-outline"}
+              size={22}
+              color={generarMovimiento ? colors.primario : colors.textoMuySuave}
+            />
+            <Text style={styles.txtCheckSaldar}>
+              {soyDeudor
+                ? "Registrar gasto en mis transacciones"
+                : "Registrar ingreso en mis transacciones"}
+            </Text>
+          </TouchableOpacity>
+          {!generarMovimiento && (
+            <Text style={styles.txtNotaGasto}>
+              Se perdonará la deuda: quedará saldada sin registrar ningún
+              movimiento.
+            </Text>
+          )}
+
+          <TouchableOpacity
+            style={[
+              styles.btnConfirmarSaldar,
+              { opacity: guardando || !cantidad ? 0.6 : 1 },
+            ]}
+            onPress={handleGuardar}
+            disabled={guardando || !cantidad}
+          >
+            {guardando ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={styles.txtConfirmarSaldar}>Confirmar</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ============================================================================
+// ESTILOS
+// ============================================================================
 const styles = StyleSheet.create({
   pantalla: { flex: 1, backgroundColor: colors.fondo },
   contenido: {
@@ -503,14 +729,11 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   estadoTexto: { fontSize: 13, color: colors.textoSuave },
-
   resumenAlcance: {
     fontSize: 11,
     color: colors.textoMuySuave,
     marginBottom: 12,
   },
-
-  // HERO STYLES
   heroContainer: {
     alignItems: "center",
     paddingVertical: 30,
@@ -538,18 +761,8 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     letterSpacing: -1,
   },
-
-  // PILARES (CONTENEDOR GLOBAL)
-  gridPilares: {
-    flexDirection: "column",
-    gap: 16,
-    marginBottom: 24,
-  },
-  gridPilaresDesktop: {
-    flexDirection: "row",
-    alignItems: "stretch", // Para que tengan el mismo alto
-  },
-
+  gridPilares: { flexDirection: "column", gap: 16, marginBottom: 24 },
+  gridPilaresDesktop: { flexDirection: "row", alignItems: "stretch" },
   gridMetricas: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -568,8 +781,106 @@ const styles = StyleSheet.create({
     color: colors.texto,
     marginBottom: 8,
   },
-
-  // GRAFICOS
+  cabeceraDeudas: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  cajaLiquidez: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    padding: 12,
+    borderRadius: 8,
+    gap: 4,
+  },
+  txtLiquidez: { fontSize: 13, color: colors.textoSuave, fontWeight: "500" },
+  filaDeuda: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.02)",
+  },
+  nombreDeuda: { fontSize: 15, color: colors.texto, fontWeight: "500" },
+  valorDeuda: {
+    fontSize: 15,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+  },
   gridGraficos: { flexDirection: "column", gap: 16 },
   gridGraficosDesktop: { flexDirection: "row", alignItems: "stretch" },
+
+  // Estilos Modal Saldar Deudas
+  overlayModalSaldar: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  cajaModalSaldar: {
+    backgroundColor: colors.fondo,
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  cabeceraSaldar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  textoInfoSaldar: {
+    fontSize: 15,
+    color: colors.texto,
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  labelSaldar: {
+    fontSize: 12,
+    color: colors.textoSuave,
+    marginBottom: 6,
+    fontWeight: "600",
+  },
+  inputSaldar: {
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: colors.bordeFuerte,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 18,
+    fontWeight: "600",
+    color: colors.texto,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  btnCheckSaldar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+  txtCheckSaldar: { fontSize: 13, color: colors.texto, flex: 1 },
+  txtNotaGasto: {
+    fontSize: 12,
+    color: colors.textoSuave,
+    fontStyle: "italic",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  btnConfirmarSaldar: {
+    backgroundColor: colors.primario,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  txtConfirmarSaldar: { color: "#fff", fontWeight: "700", fontSize: 15 },
 });

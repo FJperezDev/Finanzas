@@ -1,3 +1,22 @@
+# Secretos / entorno local
+.env
 *.env
-*.dev
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / Expo
+node_modules/
+.expo/
+*.tsbuildinfo
+
+# Base de datos local
 db.sqlite3
+
+# Archivos subidos (avatares) y caché generados en tiempo de ejecución
+backend/data/media/
+backend/data/cache/

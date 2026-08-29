@@ -315,3 +315,112 @@ export function capitalSeguridadPignoracion(
   }
   return (ltvMaximo * deudaGarantizada) / (1 - caidaMercado);
 }
+
+// ---------------------------------------------------------------------------
+// Sistema de Deudas (Gastos Compartidos)
+// ---------------------------------------------------------------------------
+export interface Contacto {
+  id: number;
+  nombre: string;
+  telefono: string;
+  correo: string | null;
+  direccion?: string;
+  icono: string | null;
+}
+
+export interface ParticipacionCompartida {
+  id?: number;
+  contacto_id: number;
+  importe_debido: number;
+  importe_saldado?: number; // parte ya saldada (pagada o perdonada)
+  saldado?: boolean; // saldada por completo
+  perdonado?: boolean; // la parte saldada fue perdonada
+}
+
+export interface GastoCompartido {
+  id: number;
+  concepto: string;
+  fecha: string; // YYYY-MM-DD
+  importe_total: number;
+  categoria_macro: string;
+  subcategoria: string;
+  tipo_reparto: "IGUALES" | "EXACTO";
+  pagador_id: number | null; // null significa que pagaste tú (el usuario principal)
+  mi_parte_saldada?: boolean; // tu parte inferida ya está saldada por completo
+  mi_parte_saldada_importe?: number; // importe saldado de tu parte
+  mi_parte_perdonada?: boolean; // tu parte fue perdonada
+  participaciones: ParticipacionCompartida[];
+}
+
+export interface BalanceContacto {
+  contacto: Contacto;
+  meDebe: number; // Lo que pagué yo por él
+  leDebo: number; // Lo que pagó él por mí
+  balanceNeto: number; // Positivo = me debe dinero; Negativo = le debo dinero
+}
+
+/**
+ * Procesa todos los gastos compartidos y calcula el balance cruzado con cada contacto.
+ * Si Ana me debe 50€ de una cena, pero yo le debo 20€ de un regalo, el neto es +30€.
+ */
+export function calcularBalancesCruzados(
+  contactos: Contacto[],
+  gastos: GastoCompartido[],
+): BalanceContacto[] {
+  // Inicializamos los contadores para cada contacto
+  const balances = new Map<number, { meDebe: number; leDebo: number }>();
+  contactos.forEach((c) => balances.set(c.id, { meDebe: 0, leDebo: 0 }));
+
+  for (const gasto of gastos) {
+    for (const part of gasto.participaciones) {
+      const saldado =
+        part.importe_saldado ?? (part.saldado ? part.importe_debido : 0);
+      const pendiente = part.importe_debido - saldado;
+      if (pendiente <= 0.001) continue; // Deuda ya saldada (pagada o perdonada).
+
+      const b = balances.get(part.contacto_id);
+      if (!b) continue; // Contacto no encontrado (borrado o inactivo)
+
+      if (gasto.pagador_id === null) {
+        // 1. Pagué YO. Todo lo que esté pendiente en 'participaciones' me lo deben.
+        b.meDebe += pendiente;
+      }
+      // Si pagó otra persona (pagador_id != null), las participaciones
+      // representan deudas entre terceros: no afectan a mi balance.
+    }
+
+    // CASO ESPECIAL: Yo participé en un gasto pagado por un amigo.
+    // El backend no crea una Participacion para mí, así que mi deuda se
+    // infiere restando lo que deben los demás del total. Descuento la parte
+    // que ya he saldado (mi_parte_saldada_importe).
+    if (gasto.pagador_id !== null) {
+      const b = balances.get(gasto.pagador_id);
+      if (b) {
+        const sumaParticipantes = gasto.participaciones.reduce(
+          (acc, p) => acc + p.importe_debido,
+          0,
+        );
+        const miParteInferida = gasto.importe_total - sumaParticipantes;
+        const miSaldada =
+          gasto.mi_parte_saldada_importe ??
+          (gasto.mi_parte_saldada ? miParteInferida : 0);
+        const pendiente = miParteInferida - miSaldada;
+
+        // Si sobra dinero tras restar lo que deben los demás, esa parte me toca a mí.
+        if (pendiente > 0.01) {
+          b.leDebo += pendiente;
+        }
+      }
+    }
+  }
+
+  return contactos.map((contacto) => {
+    const b = balances.get(contacto.id)!;
+    return {
+      contacto,
+      meDebe: b.meDebe,
+      leDebo: b.leDebo,
+      balanceNeto: b.meDebe - b.leDebo,
+    };
+  });
+}

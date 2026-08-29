@@ -1,0 +1,12 @@
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm install
+
+# Expo web usa por defecto el puerto 8081
+EXPOSE 8081
+
+# Arrancamos Expo en modo web
+CMD ["npx", "expo", "start", "--web"]

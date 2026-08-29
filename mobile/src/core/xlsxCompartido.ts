@@ -45,7 +45,9 @@ export function normalizarFecha(valor: unknown): string {
 export function normalizarImporte(valor: unknown): number {
   if (typeof valor === "number") return valor;
   if (valor == null) return 0;
-  const texto = String(valor).trim().replace(/\u00a0/g, " ");
+  const texto = String(valor)
+    .trim()
+    .replace(/\u00a0/g, " ");
   const conPunto = texto.includes(".") && texto.includes(",");
   let limpio: string;
   if (conPunto) {
@@ -74,13 +76,20 @@ export function validarEsquema(filas: FilaTransaccion[]): string[] {
   if (filas.length === 0) return errores;
 
   const tipos = new Set(filas.map((f) => f.Tipo));
-  const invalidos = [...tipos].filter((t) => !TIPOS_PERMITIDOS.includes(t as never));
-  if (invalidos.length) errores.push(`Valores de 'Tipo' no permitidos: ${invalidos.join(", ")}`);
+  const invalidos = [...tipos].filter(
+    (t) => !TIPOS_PERMITIDOS.includes(t as never),
+  );
+  if (invalidos.length)
+    errores.push(`Valores de 'Tipo' no permitidos: ${invalidos.join(", ")}`);
 
   const cats = new Set(filas.map((f) => f.Categoria_Macro));
-  const catsInvalidas = [...cats].filter((c) => !CATEGORIAS_MACRO.includes(c as never));
+  const catsInvalidas = [...cats].filter(
+    (c) => !CATEGORIAS_MACRO.includes(c as never),
+  );
   if (catsInvalidas.length) {
-    errores.push(`Valores de 'Categoria_Macro' no permitidos: ${catsInvalidas.join(", ")}`);
+    errores.push(
+      `Valores de 'Categoria_Macro' no permitidos: ${catsInvalidas.join(", ")}`,
+    );
   }
 
   if (filas.some((f) => f.Importe < 0)) {
@@ -91,3 +100,18 @@ export function validarEsquema(filas: FilaTransaccion[]): string[] {
 
 /** Columnas del contrato como string[] (para compatibilidad de tipos). */
 export const COLUMNAS_CONTRATO: string[] = [...COLUMNAS_EXCEL];
+
+// ---------------------------------------------------------------------------
+// Sistema de Deudas (Tipos para la API)
+// ---------------------------------------------------------------------------
+export interface PayloadGastoCompartido {
+  concepto: string;
+  fecha: string;
+  importe_total: number;
+  categoria_macro: string;
+  subcategoria: string;
+  tipo_reparto: "IGUALES" | "EXACTO";
+  pagador_id: number | null;
+  participantes: { contacto_id: number; importe_exacto?: number }[];
+  omitir_transaccion?: boolean;
+}

@@ -12,7 +12,11 @@
  */
 import { create } from "zustand";
 
-import type { FilaTransaccion } from "../core/calculations";
+import type {
+  Contacto,
+  FilaTransaccion,
+  GastoCompartido,
+} from "../core/calculations";
 import {
   CATEGORIAS_MACRO,
   COLUMNAS_EXCEL,
@@ -26,6 +30,13 @@ import {
   leerTransacciones,
   ordenarPorFecha,
   validarEsquema,
+  leerContactos,
+  leerGastosCompartidos,
+  guardarGastoCompartidoApi,
+  crearContactoApi,
+  eliminarContactoApi,
+  saldarDeudaApi,
+  subirAvatarApi,
 } from "../core/xlsxService";
 
 // ---------------------------------------------------------------------------
@@ -68,6 +79,32 @@ export interface EditorState {
   guardando: boolean;
   sucio: boolean; // hay cambios pendientes de persistir (autoguardado)
 
+  contactos: Contacto[];
+  gastosCompartidos: GastoCompartido[];
+
+  crearContacto: (payload: Omit<Contacto, "id">) => Promise<void>;
+
+  eliminarContacto: (id: number) => Promise<void>;
+
+  subirAvatar: (contactoId: number, icono: string | null) => Promise<void>;
+
+  saldarDeuda: (payload: {
+    contacto_id: number;
+    importe?: number;
+    registrar_transaccion: boolean;
+  }) => Promise<void>;
+
+  crearGastoCompartido: (payload: {
+    concepto: string;
+    fecha: string;
+    importe_total: number;
+    categoria_macro: string;
+    subcategoria: string;
+    tipo_reparto: "IGUALES" | "EXACTO";
+    pagador_id: number | null;
+    participantes: { contacto_id: number; importe_exacto?: number }[];
+  }) => Promise<void>;
+
   // Acciones
   cargar: () => Promise<void>;
   guardar: () => Promise<void>;
@@ -108,7 +145,7 @@ function filaNueva(importe = 0): FilaTransaccion {
     __id: nuevoIdFila(),
     Fecha: hoyISO(),
     Tipo: "Gasto",
-    Categoria_Macro: "Fijos",
+    Categoria_Macro: "Fijo",
     Subcategoria: "",
     Concepto: "",
     Importe: importe,
@@ -269,6 +306,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   guardando: false,
   sucio: false,
 
+  contactos: [],
+  gastosCompartidos: [],
+
   modalAnadirVisible: false,
   setModalAnadirVisible: (visible) => set({ modalAnadirVisible: visible }),
 
@@ -277,7 +317,11 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     set({ cargando: true, error: null });
     try {
       await generarSeedSiNecesario();
-      const filas = await leerTransacciones();
+      const [filas, contactos, gastosCompartidos] = await Promise.all([
+        leerTransacciones(),
+        leerContactos(), // Función nueva a crear
+        leerGastosCompartidos(), // Función nueva a crear
+      ]);
 
       const { anio, mes } = filtrosPorDefecto(filas);
       const primera = filas.find((f) => {
@@ -296,6 +340,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         seleccion: primera ? { id: primera.__id, col: "Fecha" } : null,
         anio,
         mes,
+        contactos,
+        gastosCompartidos,
         sucio: false,
       });
     } catch (exc) {
@@ -555,6 +601,121 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
       sucio: true,
     });
     programarAutoguardado();
+  },
+  crearGastoCompartido: async (payload) => {
+    set({ guardando: true });
+    try {
+      // Llamada a la API (crearemos esta función en el siguiente paso)
+      await guardarGastoCompartidoApi(payload);
+
+      // Como un gasto compartido pagado por ti genera una Transaccion en el backend,
+      // lo más seguro es recargar todo el estado para tener el Excel y deudas sincronizados.
+      await get().cargar();
+
+      set({
+        guardando: false,
+        flash: {
+          tipo: "ok",
+          texto: "Gasto compartido registrado correctamente.",
+        },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: `Error al registrar deudas: ${exc instanceof Error ? exc.message : exc}`,
+        },
+      });
+    }
+  },
+  crearContacto: async (payload) => {
+    set({ guardando: true });
+    try {
+      await crearContactoApi(payload);
+      const contactosActualizados = await leerContactos(); // Recargamos para ver el nuevo
+      set({
+        contactos: contactosActualizados,
+        guardando: false,
+        flash: { tipo: "ok", texto: "Contacto creado correctamente." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: exc instanceof Error ? exc.message : String(exc),
+        },
+      });
+    }
+  },
+  eliminarContacto: async (id: number) => {
+    set({ guardando: true });
+    try {
+      await eliminarContactoApi(id);
+
+      // Actualizamos el estado local eliminando el contacto de la lista sin recargar todo de internet
+      const contactosActualizados = get().contactos.filter((c) => c.id !== id);
+
+      set({
+        contactos: contactosActualizados,
+        guardando: false,
+        flash: { tipo: "info", texto: "Contacto eliminado." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: exc instanceof Error ? exc.message : String(exc),
+        },
+      });
+    }
+  },
+
+  subirAvatar: async (contactoId, icono) => {
+    set({ guardando: true });
+    try {
+      await subirAvatarApi(contactoId, icono);
+      const contactosActualizados = await leerContactos();
+      set({
+        contactos: contactosActualizados,
+        guardando: false,
+        flash: { tipo: "ok", texto: "Avatar actualizado." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: exc instanceof Error ? exc.message : String(exc),
+        },
+      });
+    }
+  },
+
+  saldarDeuda: async (payload) => {
+    set({ guardando: true });
+    try {
+      await saldarDeudaApi(payload);
+
+      // El backend marca las deudas como saldadas y crea la transacción
+      // espejo; recargamos para reflejar Excel y balances sincronizados.
+      await get().cargar();
+
+      set({
+        guardando: false,
+        flash: { tipo: "ok", texto: "Deuda saldada correctamente." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: `Error al saldar: ${exc instanceof Error ? exc.message : exc}`,
+        },
+      });
+    }
   },
 }));
 

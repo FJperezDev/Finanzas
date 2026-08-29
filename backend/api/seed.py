@@ -9,6 +9,7 @@ contiene exactamente la vista descrita del editor:
   3. "Alquiler Piso"  · 1.150,00 € (Gasto, Fijo) → el frontend aplica el
      cambio pendiente a 1.200,00 € (celda G3) al cargar, como en móvil.
 """
+
 import math
 import random
 
@@ -49,12 +50,48 @@ def _importe(base: float, volatilidad: float) -> float:
 
 def filas_mes(anio: int, mes: int) -> list[tuple]:
     filas = []
-    filas.append((f"{anio}-{mes:02d}-01", "Ingreso", "Nómina", "Nómina", "Nómina mensual", _importe(NOMINA_NETA, 0.02)))
+    filas.append(
+        (
+            f"{anio}-{mes:02d}-01",
+            "Ingreso",
+            "Nómina",
+            "Nómina",
+            "Nómina mensual",
+            _importe(NOMINA_NETA, 0.02),
+        )
+    )
     for macro, sub, concepto, dia, base, vol in GASTOS_MENSUALES:
-        filas.append((f"{anio}-{mes:02d}-{dia:02d}", "Gasto", macro, sub, concepto, _importe(base, vol)))
+        filas.append(
+            (
+                f"{anio}-{mes:02d}-{dia:02d}",
+                "Gasto",
+                macro,
+                sub,
+                concepto,
+                _importe(base, vol),
+            )
+        )
     if mes in MESES_PAGA_EXTRA:
-        filas.append((f"{anio}-{mes:02d}-15", "Ingreso", "Regalo", "Paga_Extra", "Paga extra", _importe(PAGA_EXTRA_NETA, 0.02)))
-        filas.append((f"{anio}-{mes:02d}-16", "Gasto", "Inversión", "Indexado_SP500", "Aportación extraordinaria indexado", PAGA_EXTRA_INVERTIDA))
+        filas.append(
+            (
+                f"{anio}-{mes:02d}-15",
+                "Ingreso",
+                "Regalo",
+                "Paga_Extra",
+                "Paga extra",
+                _importe(PAGA_EXTRA_NETA, 0.02),
+            )
+        )
+        filas.append(
+            (
+                f"{anio}-{mes:02d}-16",
+                "Gasto",
+                "Inversión",
+                "Indexado_SP500",
+                "Aportación extraordinaria indexado",
+                PAGA_EXTRA_INVERTIDA,
+            )
+        )
     return filas
 
 
@@ -65,24 +102,28 @@ def generar_filas_seed() -> list[dict]:
     for anio, mes in meses:
         if anio == 2026 and mes == 1:
             for fecha, tipo, macro, sub, concepto, importe in ENERO_2026:
-                filas.append({
-                    "Fecha": fecha,
-                    "Tipo": tipo,
-                    "Categoria_Macro": macro,
-                    "Subcategoria": sub,
-                    "Concepto": concepto,
-                    "Importe": importe,
-                })
+                filas.append(
+                    {
+                        "Fecha": fecha,
+                        "Tipo": tipo,
+                        "Categoria_Macro": macro,
+                        "Subcategoria": sub,
+                        "Concepto": concepto,
+                        "Importe": importe,
+                    }
+                )
         else:
             for fecha, tipo, macro, sub, concepto, importe in filas_mes(anio, mes):
-                filas.append({
-                    "Fecha": fecha,
-                    "Tipo": tipo,
-                    "Categoria_Macro": macro,
-                    "Subcategoria": sub,
-                    "Concepto": concepto,
-                    "Importe": importe,
-                })
+                filas.append(
+                    {
+                        "Fecha": fecha,
+                        "Tipo": tipo,
+                        "Categoria_Macro": macro,
+                        "Subcategoria": sub,
+                        "Concepto": concepto,
+                        "Importe": importe,
+                    }
+                )
     return filas
 
 
@@ -102,3 +143,54 @@ __all__ = [
     "decimal_importe",
     "math",
 ]
+
+CONTACTOS_SEED = [
+    {"nombre": "Ana", "telefono": "+34611222333", "correo": "ana@example.com"},
+    {"nombre": "Carlos", "telefono": "+34644555666", "correo": "carlos@example.com"},
+    {"nombre": "Bea", "telefono": "+34677888999", "correo": "bea@example.com"},
+]
+
+GASTOS_COMPARTIDOS_SEED = [
+    {
+        "concepto": "Cena Pizzería",
+        "fecha": "2025-08-15",
+        "importe_total": 60.00,
+        "categoria_macro": "Ocio",
+        "subcategoria": "Restaurantes",
+        "tipo_reparto": "IGUALES",
+        "pagador_index": None,  # Pagas tú
+        "participantes": [0, 1],  # Ana y Carlos (60€ entre 3 = 20€ cada uno)
+    },
+    {
+        "concepto": "Regalo de Boda",
+        "fecha": "2025-09-20",
+        "importe_total": 150.00,
+        "categoria_macro": "Regalo",
+        "subcategoria": "Amigos",
+        "tipo_reparto": "EXACTO",
+        "pagador_index": 0,  # Paga Ana
+        "participantes": [
+            {"contacto_index": 1, "importe_exacto": 50.00},  # Carlos le debe 50 a Ana
+            {"contacto_index": 2, "importe_exacto": 50.00},  # Bea le debe 50 a Ana
+        ],
+        # (Se asume que Ana puso sus 50. Tú no participas o se lo pagas en mano).
+    },
+    {
+        "concepto": "Airbnb Viaje",
+        "fecha": "2026-01-05",  # Para que coincida con la vista de tu editor de enero
+        "importe_total": 240.00,
+        "categoria_macro": "Ocio",
+        "subcategoria": "Viajes",
+        "tipo_reparto": "IGUALES",
+        "pagador_index": None,  # Pagas tú
+        "participantes": [0, 1, 2],  # Ana, Carlos, Bea (240€ entre 4 = 60€ cada uno)
+    },
+]
+
+
+def generar_contactos_seed() -> list[dict]:
+    return CONTACTOS_SEED
+
+
+def generar_gastos_compartidos_seed() -> list[dict]:
+    return GASTOS_COMPARTIDOS_SEED

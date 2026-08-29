@@ -15,7 +15,11 @@
 import { Platform } from "react-native";
 import { File, Paths } from "expo-file-system";
 
-import type { FilaTransaccion } from "./calculations";
+import type {
+  FilaTransaccion,
+  Contacto,
+  GastoCompartido,
+} from "./calculations";
 import { peticionAutenticada } from "./authApi";
 import { haySesion } from "./tokenStore";
 import {
@@ -23,6 +27,13 @@ import {
   escribirTransaccionesMock,
   generarSeedSiNecesario as generarSeedMock,
   leerTransaccionesMock,
+  leerContactosMock,
+  leerGastosCompartidosMock,
+  guardarGastoCompartidoMock,
+  crearContactoMock,
+  eliminarContactoMock,
+  subirAvatarMock,
+  saldarDeudaMock,
 } from "./xlsxMock";
 import {
   COLUMNAS_CONTRATO,
@@ -31,6 +42,7 @@ import {
   ordenarPorFecha,
   validarEsquema,
   type FilaGuardable,
+  type PayloadGastoCompartido,
 } from "./xlsxCompartido";
 
 // Re-export para los consumidores (editorStore, hooks)
@@ -57,7 +69,9 @@ interface FilaCrudaWeb {
 async function apiGet<T>(ruta: string): Promise<T> {
   const respuesta = await peticionAutenticada(ruta);
   if (!respuesta.ok) {
-    throw new Error(`Error del servidor al cargar datos (HTTP ${respuesta.status}).`);
+    throw new Error(
+      `Error del servidor al cargar datos (HTTP ${respuesta.status}).`,
+    );
   }
   return (await respuesta.json()) as T;
 }
@@ -113,13 +127,20 @@ async function escribirEnApi(filas: FilaGuardable[]): Promise<void> {
     body: JSON.stringify({ filas: sinIds }),
   });
 
-  const datos = (await respuesta.json().catch(() => ({}))) as { errores?: string[] };
+  const datos = (await respuesta.json().catch(() => ({}))) as {
+    errores?: string[];
+  };
   if (!respuesta.ok) {
-    throw new Error(datos.errores?.join(" ") || `Error del servidor al guardar (HTTP ${respuesta.status}).`);
+    throw new Error(
+      datos.errores?.join(" ") ||
+        `Error del servidor al guardar (HTTP ${respuesta.status}).`,
+    );
   }
 }
 
-export async function escribirTransacciones(filas: FilaGuardable[]): Promise<void> {
+export async function escribirTransacciones(
+  filas: FilaGuardable[],
+): Promise<void> {
   if (haySesion()) await escribirEnApi(filas);
   else await escribirTransaccionesMock(filas);
 }
@@ -151,7 +172,8 @@ async function exportarXlsxDeApi(
       errores?: string[];
     };
     throw new Error(
-      datos.errores?.join(" ") || `Error al exportar (HTTP ${respuesta.status}).`,
+      datos.errores?.join(" ") ||
+        `Error al exportar (HTTP ${respuesta.status}).`,
     );
   }
 
@@ -188,4 +210,144 @@ export async function generarSeedSiNecesario(): Promise<boolean> {
   if (!haySesion()) return generarSeedMock();
   await apiGet<{ filas: unknown[] }>("transacciones/");
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Sistema de Deudas (Gastos Compartidos)
+// ---------------------------------------------------------------------------
+
+export async function leerContactos(): Promise<Contacto[]> {
+  if (!haySesion()) return leerContactosMock();
+
+  // Asume que vas a crear una vista simple GET /api/contactos/ en Django
+  const datos = await apiGet<{ contactos: Contacto[] }>("contactos/");
+  return datos.contactos;
+}
+
+export async function leerGastosCompartidos(): Promise<GastoCompartido[]> {
+  if (!haySesion()) return leerGastosCompartidosMock();
+
+  // Asume que vas a crear una vista simple GET /api/gastos-compartidos/ en Django
+  const datos = await apiGet<{ gastos: GastoCompartido[] }>(
+    "gastos-compartidos/",
+  );
+  return datos.gastos;
+}
+
+export async function guardarGastoCompartidoApi(
+  payload: PayloadGastoCompartido,
+): Promise<void> {
+  if (!haySesion()) {
+    await guardarGastoCompartidoMock(payload);
+    return;
+  }
+
+  // Apunta a la ruta que configuramos en el urls.py de Django
+  const respuesta = await peticionAutenticada("gastos-compartidos/crear/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") ||
+        `Error del servidor al registrar deuda (HTTP ${respuesta.status}).`,
+    );
+  }
+}
+
+export async function crearContactoApi(
+  payload: Omit<Contacto, "id">,
+): Promise<void> {
+  if (!haySesion()) {
+    await crearContactoMock(payload);
+    return;
+  }
+  const respuesta = await peticionAutenticada("contactos/crear/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(datos.errores?.join(" ") || "Error al crear el contacto.");
+  }
+}
+
+export async function eliminarContactoApi(id: number): Promise<void> {
+  if (!haySesion()) {
+    await eliminarContactoMock(id);
+    return;
+  }
+
+  const respuesta = await peticionAutenticada(`contactos/${id}/eliminar/`, {
+    method: "POST",
+  });
+
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") || "Error al eliminar el contacto.",
+    );
+  }
+}
+
+export async function subirAvatarApi(
+  contactoId: number,
+  icono: string | null,
+): Promise<void> {
+  if (!haySesion()) {
+    await subirAvatarMock(contactoId, icono);
+    return;
+  }
+
+  const respuesta = await peticionAutenticada(`contactos/${contactoId}/avatar/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ icono }),
+  });
+
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") || "Error al actualizar el avatar.",
+    );
+  }
+}
+
+export async function saldarDeudaApi(payload: {
+  contacto_id: number;
+  importe?: number;
+  registrar_transaccion: boolean;
+}): Promise<void> {
+  if (!haySesion()) {
+    await saldarDeudaMock(payload);
+    return;
+  }
+
+  const respuesta = await peticionAutenticada("gastos-compartidos/saldar/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") || "Error al saldar la deuda.",
+    );
+  }
 }

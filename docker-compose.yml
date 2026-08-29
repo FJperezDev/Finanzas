@@ -3,8 +3,13 @@ services:
     container_name: finanzas_backend
     build: ./backend
     environment:
+      - DEBUG=false
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:?Define DJANGO_SECRET_KEY en .env}
       - FINANZAS_ADMIN_USERNAME=${FINANZAS_ADMIN_USERNAME:-admin}
-      - FINANZAS_ADMIN_PASSWORD=${FINANZAS_ADMIN_PASSWORD:-admin123}
+      - FINANZAS_ADMIN_PASSWORD=${FINANZAS_ADMIN_PASSWORD:?Define FINANZAS_ADMIN_PASSWORD en .env}
+      - FINANZAS_ACCESS_TOKEN_MINUTES=${FINANZAS_ACCESS_TOKEN_MINUTES:-15}
+      - FINANZAS_REFRESH_TOKEN_DAYS=${FINANZAS_REFRESH_TOKEN_DAYS:-7}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-*}
     volumes:
       - ./backend/data:/app/data
     networks:
@@ -26,6 +31,10 @@ services:
     build: ./mobile
     networks:
       - proxy
+    volumes:
+      # Comparte el volumen de datos del backend (solo lectura) para que
+      # nginx sirva los avatares subidos desde /media/.
+      - ./backend/data:/data:ro
     depends_on:
       backend:
         condition: service_healthy

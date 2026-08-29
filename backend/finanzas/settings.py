@@ -148,6 +148,14 @@ STATIC_URL = "static/"
 
 
 # ---------------------------------------------------------------------------
+# Archivos subidos (avatares de contacto, etc.)
+# ---------------------------------------------------------------------------
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = DATA_DIR / "media"
+
+
+# ---------------------------------------------------------------------------
 # Django
 # ---------------------------------------------------------------------------
 
@@ -178,9 +186,30 @@ if DEBUG:
 
 
 # ---------------------------------------------------------------------------
+# Caché
+# ---------------------------------------------------------------------------
+
+# En producción (gunicorn con varios workers) la caché por defecto
+# (locmem) es por proceso, lo que debilita el throttle de login. Usamos
+# una caché en disco compartida por todos los workers.
+if not DEBUG:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+            "LOCATION": DATA_DIR / "cache",
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
 # Seguridad de producción
 # ---------------------------------------------------------------------------
 
 if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
+
+    # Detrás de nginx (proxy inverso) las peticiones llegan como HTTP aunque
+    # el cliente use HTTPS; confiamos en la cabecera X-Forwarded-Proto para
+    # generar URLs absolutas (p. ej. avatares) con el esquema correcto.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

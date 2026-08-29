@@ -4,6 +4,7 @@ import {
   Modal,
   StyleSheet,
   Text,
+  TextStyle,
   TouchableOpacity,
   View,
   ViewStyle,
@@ -24,8 +25,14 @@ export function Tarjeta({
   return <View style={[styles.tarjeta, style]}>{children}</View>;
 }
 
-export function TituloSeccion({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.tituloSeccion}>{children}</Text>;
+export function TituloSeccion({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: TextStyle;
+}) {
+  return <Text style={[styles.tituloSeccion, style]}>{children}</Text>;
 }
 
 export function Subtitulo({ children }: { children: React.ReactNode }) {

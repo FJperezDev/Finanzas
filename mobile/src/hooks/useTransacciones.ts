@@ -1,8 +1,63 @@
 /** Hook compartido: conecta los módulos analíticos al store global del Editor. */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react"; // <-- Añadido useMemo
 
-import type { FilaTransaccion } from "../core/calculations";
-import { useEditorStore } from "../state/editorStore";
+import {
+  calcularBalancesCruzados,
+  type BalanceContacto,
+  type Contacto,
+  type GastoCompartido,
+  type FilaTransaccion, // <-- Añadido
+} from "../core/calculations";
+import { useEditorStore, type EditorState } from "../state/editorStore"; // <-- Añadido EditorState
+
+export interface EstadoDeudas {
+  cargando: boolean;
+  contactos: Contacto[];
+  gastosCompartidos: GastoCompartido[];
+  balances: BalanceContacto[];
+  crearGastoCompartido: EditorState["crearGastoCompartido"];
+  crearContacto: EditorState["crearContacto"];
+  eliminarContacto: EditorState["eliminarContacto"];
+  subirAvatar: EditorState["subirAvatar"];
+  saldarDeuda: EditorState["saldarDeuda"];
+}
+
+export function useDeudas(): EstadoDeudas {
+  const cargando = useEditorStore((s) => s.cargando);
+  const contactos = useEditorStore((s) => s.contactos);
+  const gastosCompartidos = useEditorStore((s) => s.gastosCompartidos);
+  const crearGastoCompartido = useEditorStore((s) => s.crearGastoCompartido);
+  const crearContacto = useEditorStore((s) => s.crearContacto);
+  const eliminarContacto = useEditorStore((s) => s.eliminarContacto);
+  const subirAvatar = useEditorStore((s) => s.subirAvatar);
+  const saldarDeuda = useEditorStore((s) => s.saldarDeuda);
+
+  // Usamos useMemo directamente en lugar de React.useMemo
+  const balances = useMemo(
+    () => calcularBalancesCruzados(contactos, gastosCompartidos),
+    [contactos, gastosCompartidos],
+  );
+
+  const peticionLanzada = useRef(false);
+  useEffect(() => {
+    if (!peticionLanzada.current && useEditorStore.getState().cargando) {
+      peticionLanzada.current = true;
+      useEditorStore.getState().cargar();
+    }
+  }, []);
+
+  return {
+    cargando,
+    contactos,
+    gastosCompartidos,
+    balances,
+    crearGastoCompartido,
+    crearContacto,
+    eliminarContacto,
+    subirAvatar,
+    saldarDeuda,
+  };
+}
 
 export interface EstadoTransacciones {
   cargando: boolean;
@@ -10,7 +65,6 @@ export interface EstadoTransacciones {
   filas: FilaTransaccion[];
 }
 
-/** Fila de transacción con el importe firmado, como hace `_saneado`. */
 export function conImporteFirmado(filas: FilaTransaccion[]): FilaTransaccion[] {
   return filas.map((f) => ({
     ...f,
@@ -21,7 +75,6 @@ export function conImporteFirmado(filas: FilaTransaccion[]): FilaTransaccion[] {
 export function useTransacciones(): EstadoTransacciones & {
   recargar: () => void;
 } {
-  // Consumimos directamente el estado global (Zustand)
   const cargando = useEditorStore((s) => s.cargando);
   const error = useEditorStore((s) => s.error);
   const filas = useEditorStore((s) => s.filas);
@@ -30,8 +83,6 @@ export function useTransacciones(): EstadoTransacciones & {
   const peticionLanzada = useRef(false);
 
   useEffect(() => {
-    // Si la app arranca por el Dashboard, el store estará en "cargando: true" por defecto.
-    // Lanzamos la carga inicial solo una vez.
     if (!peticionLanzada.current && useEditorStore.getState().cargando) {
       peticionLanzada.current = true;
       cargar();
@@ -41,7 +92,6 @@ export function useTransacciones(): EstadoTransacciones & {
   return {
     cargando,
     error,
-    // Mantenemos la lógica que necesita el Dashboard (importes firmados)
     filas: conImporteFirmado(filas),
     recargar: cargar,
   };
