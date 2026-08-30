@@ -57,7 +57,6 @@ export function HandsontableGrid({
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
           font-size: 13.5px;
           color: var(--text-primary) !important;
-          border: none !important;
         }
         
         /* Cabeceras de columnas */
@@ -69,21 +68,26 @@ export function HandsontableGrid({
           font-size: 11px; 
           letter-spacing: 0.5px; 
           border-color: var(--border-main) !important; 
-          border-top: none !important; 
-          border-left: none !important; 
-          padding: 6px 0 !important; 
         }
         
         /* Celdas normales */
         .handsontable td { 
           background-color: var(--bg-root) !important; 
           border-color: var(--border-main) !important; 
-          border-left: none !important; 
           vertical-align: middle !important; 
-          padding: 4px 10px !important; 
           color: var(--text-primary) !important; 
         }
-        
+
+        /* Para el texto dentro de las celdas normales */
+        .handsontable td > div.htInner {
+          padding: 4px 10px !important;
+        }
+
+        /* Para el texto dentro de las cabeceras */
+        .handsontable th .colHeader {
+          padding: 6px 0 !important;
+        }
+                
         /* Filas alternas y hover */
         .handsontable tbody tr:nth-child(even) td { background-color: var(--row-alt) !important; }
         .handsontable tbody tr:hover td { background-color: var(--bg-surface-0) !important; }
@@ -339,6 +343,7 @@ export function HandsontableGrid({
         };
 
         function initTable(data, config) {
+          const indexFecha = config.colHeaders.indexOf('Fecha');
           hotInstance = new Handsontable(container, {
             data: data,
             rowHeaders: true,
@@ -347,9 +352,20 @@ export function HandsontableGrid({
             width: '100%',
             height: '100%',
             autoColumnSize: true,
-            columnSorting: true,
+
+            columnSorting: {
+              initialConfig: {
+                column: indexFecha !== -1 ? indexFecha : 0,
+                sortOrder: 'desc'
+              }
+            },
+            
             manualColumnResize: true,
             stretchH: 'all', 
+
+            rowHeights: 32, 
+            columnHeaderHeight: 36,
+
             cells: function (row, col) {
               const props = this.instance.colToProp(col);
 
