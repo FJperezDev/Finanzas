@@ -13,6 +13,7 @@ export interface FilaSeed {
   Categoria_Macro: string;
   Subcategoria: string;
   Concepto: string;
+  Cuenta: string;
   Importe: number;
 }
 
@@ -42,6 +43,15 @@ const NOMINA_NETA = 1600.0;
 const PAGA_EXTRA_NETA = 1350.0;
 const PAGA_EXTRA_INVERTIDA = 800.0;
 const MESES_PAGA_EXTRA = new Set([6, 12]);
+
+const CUENTA_PRIMARIA = "Unicaja";
+
+/** Asigna una cuenta corriente a cada fila de la semilla. */
+function cuentaPorDefecto(macro: string, sub: string): string {
+  if (["Restaurantes", "Ocio_Vario", "Comida"].includes(sub)) return "Revolut";
+  if (["Suministros", "Seguros", "Transporte"].includes(sub)) return "Efectivo";
+  return CUENTA_PRIMARIA;
+}
 
 // (Categoria_Macro, Subcategoria, Concepto, día, base €, volatilidad)
 const GASTOS_MENSUALES: [string, string, string, number, number, number][] = [
@@ -86,6 +96,7 @@ function filasMes(anio: number, mes: number): FilaSeed[] {
       Categoria_Macro: macro,
       Subcategoria: sub,
       Concepto: concepto,
+      Cuenta: cuentaPorDefecto(macro, sub),
       Importe: valor,
     });
   };
@@ -132,6 +143,7 @@ const ENERO_2026: FilaSeed[] = [
     Categoria_Macro: "Nómina",
     Subcategoria: "Nómina",
     Concepto: "Nómina Enero",
+    Cuenta: "Unicaja",
     Importe: 2500.0,
   },
   {
@@ -140,6 +152,7 @@ const ENERO_2026: FilaSeed[] = [
     Categoria_Macro: "Ocio",
     Subcategoria: "Comida",
     Concepto: "Compra Semanal",
+    Cuenta: "Revolut",
     Importe: 150.0,
   },
   // Alquiler del piso (gasto fijo del mes de enero)
@@ -149,6 +162,7 @@ const ENERO_2026: FilaSeed[] = [
     Categoria_Macro: "Fijo",
     Subcategoria: "Alquiler",
     Concepto: "Alquiler Piso",
+    Cuenta: "Unicaja",
     Importe: 1150.0,
   },
 ];
@@ -262,5 +276,25 @@ export function generarGastosCompartidosSeed() {
         { contacto_id: 3, importe_debido: 60.0, importe_saldado: 0 },
       ],
     },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Semilla de Cuentas (corrientes + inversión)
+// ---------------------------------------------------------------------------
+export interface CuentaSeed {
+  id: number;
+  nombre: string;
+  tipo: "corriente" | "cartera" | "remunerada";
+  balance: number;
+}
+
+export function generarCuentasSeed(): CuentaSeed[] {
+  return [
+    { id: 1, nombre: "Unicaja", tipo: "corriente", balance: 0 },
+    { id: 2, nombre: "Revolut", tipo: "corriente", balance: 0 },
+    { id: 3, nombre: "Efectivo", tipo: "corriente", balance: 0 },
+    { id: 4, nombre: "Cartera de Inversión", tipo: "cartera", balance: 0 },
+    { id: 5, nombre: "Cuenta Remunerada", tipo: "remunerada", balance: 0 },
   ];
 }

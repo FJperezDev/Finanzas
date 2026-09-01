@@ -18,6 +18,9 @@ export function EditorScreen() {
   const filas = useEditorStore((s) => s.filas);
   const anio = useEditorStore((s) => s.anio);
   const mes = useEditorStore((s) => s.mes);
+  const cuentas = useEditorStore((s) => s.cuentas);
+  const traspasos = useEditorStore((s) => s.traspasos);
+  const modoVista = useEditorStore((s) => s.modoVista);
 
   // Funciones de store
   const setCelda = useEditorStore((s) => s.setCelda);
@@ -34,6 +37,24 @@ export function EditorScreen() {
       return mes == null || parseInt(mm, 10) === mes;
     });
   }, [filas, anio, mes]);
+
+  const filasTraspasos = useMemo(() => {
+    return traspasos
+      .filter((t) => {
+        if (!t.fecha) return false;
+        const [yyyy, mm] = t.fecha.split("-");
+        if (anio != null && parseInt(yyyy, 10) !== anio) return false;
+        return mes == null || parseInt(mm, 10) === mes;
+      })
+      .map((t) => ({
+        __id: `traspaso_${t.id}`,
+        Fecha: t.fecha,
+        Concepto: t.concepto,
+        "Cuenta Origen": t.cuenta_origen,
+        "Cuenta Destino": t.cuenta_destino,
+        Importe: t.importe,
+      }));
+  }, [traspasos, anio, mes]);
 
   // Atajos de teclado globales (Solo para Web / Escritorio)
   useEffect(() => {
@@ -113,25 +134,35 @@ export function EditorScreen() {
           </View>
         ) : (
           <View style={styles.gridContainer}>
-            <HandsontableGrid
-              datos={filasFiltradas}
-              onCellChange={(id, columna, nuevoValor) => {
-                setCelda(id, columna, nuevoValor);
-              }}
-              onRowsRemove={(ids) => {
-                eliminarFilasPorId(ids);
-              }}
-              onColumnRemove={(columnas) => {
-                const colsArray = Array.isArray(columnas)
-                  ? columnas
-                  : [columnas];
-                colsArray.forEach((col) => {
-                  eliminarColumna(col);
-                });
-              }}
-              onUndo={deshacer}
-              onRedo={rehacer}
-            />
+            {modoVista === "traspasos" ? (
+              <HandsontableGrid
+                datos={filasTraspasos}
+                cuentas={cuentas.map((c) => c.nombre)}
+                readOnly
+                onCellChange={() => {}}
+              />
+            ) : (
+              <HandsontableGrid
+                datos={filasFiltradas}
+                cuentas={cuentas.map((c) => c.nombre)}
+                onCellChange={(id, columna, nuevoValor) => {
+                  setCelda(id, columna, nuevoValor);
+                }}
+                onRowsRemove={(ids) => {
+                  eliminarFilasPorId(ids);
+                }}
+                onColumnRemove={(columnas) => {
+                  const colsArray = Array.isArray(columnas)
+                    ? columnas
+                    : [columnas];
+                  colsArray.forEach((col) => {
+                    eliminarColumna(col);
+                  });
+                }}
+                onUndo={deshacer}
+                onRedo={rehacer}
+              />
+            )}
           </View>
         )}
       </View>

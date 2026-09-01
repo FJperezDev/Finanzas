@@ -21,6 +21,7 @@ class Transaccion(models.Model):
     categoria_macro = models.CharField(max_length=40)
     subcategoria = models.CharField(max_length=120, blank=True, default="")
     concepto = models.CharField(max_length=200, blank=True, default="")
+    cuenta = models.CharField(max_length=100, blank=True, default="")
     importe = models.DecimalField(max_digits=12, decimal_places=2)
     extras = models.JSONField(default=dict, blank=True)
 
@@ -165,3 +166,60 @@ class Participacion(models.Model):
     def __str__(self) -> str:
         estado = "Pagado" if self.saldado else "Pendiente"
         return f"{self.contacto.nombre} debe {self.importe_debido} ({estado})"
+
+
+class Cuenta(models.Model):
+    """Cuenta propia de dinero.
+
+    `tipo` distingue las cuentas corrientes (Unicaja, Revolut, Efectivo…)
+    de las cuentas de inversión destino de los traspasos: "cartera"
+    (fondo indexado) y "remunerada" (cuenta remunerada).
+    """
+
+    TIPOS = [
+        ("corriente", "Corriente"),
+        ("cartera", "Cartera"),
+        ("remunerada", "Remunerada"),
+    ]
+
+    nombre = models.CharField(max_length=100, unique=True)
+    tipo = models.CharField(max_length=16, choices=TIPOS, default="corriente")
+
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self.nombre} ({self.tipo})"
+
+
+class Traspaso(models.Model):
+    """Movimiento de dinero entre dos cuentas propias.
+
+    Un traspaso NO es una `Transaccion` (no contabiliza como gasto ni
+    ingreso): el dinero cambia de cuenta pero no sale del patrimonio.
+    """
+
+    fecha = models.DateField(db_index=True)
+    importe = models.DecimalField(max_digits=12, decimal_places=2)
+    concepto = models.CharField(max_length=200, blank=True, default="")
+
+    cuenta_origen = models.ForeignKey(
+        "Cuenta", on_delete=models.CASCADE, related_name="traspasos_salientes"
+    )
+    cuenta_destino = models.ForeignKey(
+        "Cuenta", on_delete=models.CASCADE, related_name="traspasos_entrantes"
+    )
+
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.fecha} · {self.cuenta_origen.nombre} → "
+            f"{self.cuenta_destino.nombre} · {self.importe}"
+        )

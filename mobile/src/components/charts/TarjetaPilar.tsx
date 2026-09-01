@@ -1,9 +1,15 @@
 import React from "react";
-import { Text, View, Pressable, StyleSheet } from "react-native";
+import { Text, View, Pressable, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { fmtEur, fmtPct } from "../../core/formatos";
 import { colors } from "../../theme";
+
+export interface CuentaResumen {
+  id: number;
+  nombre: string;
+  balance: number;
+}
 
 export function TarjetaPilar({
   titulo,
@@ -12,6 +18,9 @@ export function TarjetaPilar({
   valorActual,
   icono,
   colorAcento,
+  cuentas,
+  onAgregarCuenta,
+  onCuentaPress,
 }: {
   titulo: string;
   subtitulo: string;
@@ -19,6 +28,9 @@ export function TarjetaPilar({
   valorActual: number;
   icono: keyof typeof Ionicons.glyphMap;
   colorAcento: string;
+  cuentas?: CuentaResumen[];
+  onAgregarCuenta?: () => void;
+  onCuentaPress?: (id: number) => void;
 }) {
   const variacion = aportado > 0 ? (valorActual - aportado) / aportado : 0;
   const esPositivo = variacion >= 0;
@@ -50,10 +62,47 @@ export function TarjetaPilar({
             {subtitulo}
           </Text>
         </View>
+        {onAgregarCuenta && (
+          <Pressable
+            onPress={onAgregarCuenta}
+            hitSlop={10}
+            style={styles.btnAgregar}
+          >
+            <Ionicons name="add-circle" size={22} color={colorAcento} />
+          </Pressable>
+        )}
       </View>
 
       <View style={styles.pilarCuerpo}>
         <Text style={styles.pilarValor}>{fmtEur(valorActual)}</Text>
+
+        {cuentas && cuentas.length > 0 && (
+          <View style={styles.listaCuentas}>
+            {cuentas.map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                style={styles.cuentaCard}
+                activeOpacity={0.7}
+                onPress={() => onCuentaPress?.(c.id)}
+              >
+                <Text style={styles.cuentaNombre} numberOfLines={1}>
+                  {c.nombre}
+                </Text>
+                <View style={styles.cuentaDerecha}>
+                  <Text style={styles.cuentaBalance}>{fmtEur(c.balance)}</Text>
+                  {onCuentaPress && (
+                    <Ionicons
+                      name="swap-horizontal"
+                      size={14}
+                      color={colors.textoMuySuave}
+                    />
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         <View style={styles.pilarFooter}>
           {valorActual !== aportado && (
             <Text style={styles.pilarAportado}>Base: {fmtEur(aportado)}</Text>
@@ -102,8 +151,12 @@ const styles = StyleSheet.create({
   pilarCabecera: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     marginBottom: 24,
+  },
+  btnAgregar: {
+    padding: 2,
+    borderRadius: 12,
   },
   pilarIconoBox: {
     width: 44,
@@ -132,6 +185,39 @@ const styles = StyleSheet.create({
     color: colors.texto,
     fontVariant: ["tabular-nums"],
     marginBottom: 8,
+  },
+  listaCuentas: {
+    gap: 6,
+    marginBottom: 12,
+  },
+  cuentaCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  cuentaNombre: {
+    fontSize: 13,
+    color: colors.textoSuave,
+    fontWeight: "600",
+    flexShrink: 1,
+    marginRight: 8,
+  },
+  cuentaDerecha: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  cuentaBalance: {
+    fontSize: 13,
+    color: colors.texto,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
   },
   pilarFooter: {
     flexDirection: "row",

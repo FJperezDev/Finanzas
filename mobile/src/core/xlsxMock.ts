@@ -16,11 +16,14 @@ import type {
   Contacto,
   GastoCompartido,
   ParticipacionCompartida,
+  Cuenta,
+  TraspasoHistorial,
 } from "./calculations";
 import {
   generarFilasSeed,
   generarContactosSeed,
   generarGastosCompartidosSeed,
+  generarCuentasSeed,
 } from "./seed";
 import {
   ordenarPorFecha,
@@ -31,6 +34,42 @@ import {
 let memoria: FilaTransaccion[] | null = null;
 let memoriaContactos: Contacto[] | null = null;
 let memoriaGastos: GastoCompartido[] | null = null;
+let memoriaCuentas: Cuenta[] | null = null;
+let memoriaTraspasos: {
+  id: number;
+  fecha: string;
+  importe: number;
+  concepto: string;
+  cuenta_origen_id: number;
+  cuenta_destino_id: number;
+}[] | null = null;
+
+function cargarCuentasMemoria(): Cuenta[] {
+  if (!memoriaCuentas) {
+    memoriaCuentas = generarCuentasSeed();
+  }
+  return memoriaCuentas;
+}
+
+function cargarTraspasosMemoria() {
+  if (!memoriaTraspasos) {
+    memoriaTraspasos = [];
+  }
+  return memoriaTraspasos;
+}
+
+function balanceCuentaMock(cuenta: Cuenta): number {
+  let total = 0;
+  for (const f of cargarMemoria()) {
+    if ((f.Cuenta ?? "") !== cuenta.nombre) continue;
+    total += f.Tipo === "Ingreso" ? f.Importe : -f.Importe;
+  }
+  for (const t of cargarTraspasosMemoria()) {
+    if (t.cuenta_destino_id === cuenta.id) total += t.importe;
+    if (t.cuenta_origen_id === cuenta.id) total -= t.importe;
+  }
+  return Math.round(total * 100) / 100;
+}
 
 function cargarContactosMemoria(): Contacto[] {
   if (!memoriaContactos) {
@@ -112,6 +151,7 @@ export async function guardarGastoCompartidoMock(
       Categoria_Macro: payload.categoria_macro,
       Subcategoria: payload.subcategoria,
       Concepto: payload.concepto,
+      Cuenta: "Unicaja",
       Importe: payload.importe_total,
     });
   }
@@ -213,6 +253,7 @@ export async function saldarDeudaMock(payload: {
   contacto_id: number;
   importe?: number;
   registrar_transaccion: boolean;
+  cuenta?: string;
 }): Promise<{ importe: number; tipo: "Ingreso" | "Gasto" | null; perdonado: boolean }> {
   const gastos = cargarGastosMemoria();
   let meDeben = 0;
@@ -371,6 +412,7 @@ export async function saldarDeudaMock(payload: {
     Categoria_Macro: "Deuda",
     Subcategoria: "Saldar",
     Concepto: "Saldar cuentas",
+    Cuenta: payload.cuenta ?? "Unicaja",
     Importe: importeA,
   });
 
@@ -379,4 +421,85 @@ export async function saldarDeudaMock(payload: {
 
 function nuevoIdGasto(gastos: GastoCompartido[]): number {
   return gastos.length > 0 ? Math.max(...gastos.map((g) => g.id)) + 1 : 1;
+}
+
+// ---------------------------------------------------------------------------
+// Cuentas y traspasos (mock)
+// ---------------------------------------------------------------------------
+export async function leerCuentasMock(): Promise<Cuenta[]> {
+  return cargarCuentasMemoria().map((c) => ({
+    ...c,
+    balance: balanceCuentaMock(c),
+  }));
+}
+
+export async function crearCuentaMock(payload: {
+  nombre: string;
+  tipo: string;
+}): Promise<void> {
+  const cuentas = cargarCuentasMemoria();
+  const nuevoId =
+    cuentas.length > 0 ? Math.max(...cuentas.map((c) => c.id)) + 1 : 1;
+  cuentas.push({
+    id: nuevoId,
+    nombre: payload.nombre,
+    tipo: payload.tipo as Cuenta["tipo"],
+    balance: 0,
+  });
+}
+
+export async function actualizarCuentaMock(
+  cuentaId: number,
+  payload: { nombre: string; tipo: string },
+): Promise<void> {
+  const cuentas = cargarCuentasMemoria();
+  const cuenta = cuentas.find((c) => c.id === cuentaId);
+  if (!cuenta) return;
+  const nombreAnterior = cuenta.nombre;
+  cuenta.nombre = payload.nombre;
+  cuenta.tipo = payload.tipo as Cuenta["tipo"];
+
+  if (nombreAnterior !== payload.nombre) {
+    memoria = cargarMemoria().map((f) =>
+      f.Cuenta === nombreAnterior ? { ...f, Cuenta: payload.nombre } : f,
+    );
+  }
+}
+
+export async function eliminarCuentaMock(id: number): Promise<void> {
+  const cuentas = cargarCuentasMemoria();
+  const index = cuentas.findIndex((c) => c.id === id);
+  if (index !== -1) cuentas.splice(index, 1);
+
+  const traspasos = cargarTraspasosMemoria();
+  memoriaTraspasos = traspasos.filter(
+    (t) => t.cuenta_origen_id !== id && t.cuenta_destino_id !== id,
+  );
+}
+
+export async function crearTraspasoMock(payload: {
+  fecha: string;
+  importe: number;
+  concepto: string;
+  cuenta_origen_id: number;
+  cuenta_destino_id: number;
+}): Promise<void> {
+  const traspasos = cargarTraspasosMemoria();
+  const nuevoId =
+    traspasos.length > 0 ? Math.max(...traspasos.map((t) => t.id)) + 1 : 1;
+  traspasos.push({ id: nuevoId, ...payload });
+}
+
+export async function leerTraspasosMock(): Promise<TraspasoHistorial[]> {
+  const cuentas = cargarCuentasMemoria();
+  return cargarTraspasosMemoria().map((t) => ({
+    id: t.id,
+    fecha: t.fecha,
+    concepto: t.concepto,
+    cuenta_origen:
+      cuentas.find((c) => c.id === t.cuenta_origen_id)?.nombre ?? "",
+    cuenta_destino:
+      cuentas.find((c) => c.id === t.cuenta_destino_id)?.nombre ?? "",
+    importe: t.importe,
+  }));
 }

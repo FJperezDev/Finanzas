@@ -16,6 +16,10 @@ import { BarrasComparativa } from "../components/charts/BarrasComparativa";
 import { DonutDistribucion } from "../components/charts/DonutDistribucion";
 import { FlujoChart } from "../components/charts/FlujoChart";
 import { ContactosModal } from "../components/ContactosModal";
+import {
+  CuentasModal,
+  TraspasoModal,
+} from "../components/CuentasCorrientes";
 import { TarjetaPilar } from "../components/charts/TarjetaPilar";
 import {
   SelectorAlcance,
@@ -36,6 +40,7 @@ import {
   flujoDeCajaMensual,
   patrimonioAcumulado,
   type BalanceContacto, // Importamos el tipo para el estado
+  type Cuenta,
 } from "../core/calculations";
 import { UMBRAL_FIJOS_ALERTA } from "../core/config";
 import {
@@ -45,16 +50,19 @@ import {
   fmtPct,
   nombreMes,
 } from "../core/formatos";
-import { useTransacciones, useDeudas } from "../hooks/useTransacciones";
+import { useTransacciones, useDeudas, useCuentas } from "../hooks/useTransacciones";
 import { colors } from "../theme";
 
 export function DashboardScreen() {
   const { cargando, error, filas } = useTransacciones();
   const { balances, cargando: cargandoDeudas } = useDeudas();
+  const { cuentas } = useCuentas();
   const { width } = useWindowDimensions();
   const esDesktop = width > 768;
 
   const [modalContactosVisible, setModalContactosVisible] = useState(false);
+  const [modalCuentasVisible, setModalCuentasVisible] = useState(false);
+  const [traspasoOrigen, setTraspasoOrigen] = useState<Cuenta | null>(null);
 
   // Estado para saber qué deuda hemos tocado para saldarla
   const [deudaSeleccionada, setDeudaSeleccionada] =
@@ -151,6 +159,16 @@ export function DashboardScreen() {
       totalActual: p.totalPatrimonio,
     };
   }, [dfHasta]);
+
+  const cuentasCorrientes = useMemo(
+    () => cuentas.filter((c) => c.tipo === "corriente"),
+    [cuentas],
+  );
+  const liquidezCuentas = useMemo(
+    () =>
+      cuentasCorrientes.reduce((acc, c) => acc + (c.balance ?? 0), 0),
+    [cuentasCorrientes],
+  );
 
   const resumenDeudas = useMemo(() => {
     const deudores = balances
@@ -307,6 +325,16 @@ export function DashboardScreen() {
         onClose={() => setDeudaSeleccionada(null)}
       />
 
+      {/* MODALES DE CUENTAS CORRIENTES */}
+      <CuentasModal
+        visible={modalCuentasVisible}
+        onClose={() => setModalCuentasVisible(false)}
+      />
+      <TraspasoModal
+        cuenta={traspasoOrigen}
+        onClose={() => setTraspasoOrigen(null)}
+      />
+
       <SelectorAlcance alcance={alcance} onCambiar={setAlcance} />
       {alcance === "mes" && (
         <SelectorPeriodos
@@ -342,11 +370,21 @@ export function DashboardScreen() {
       >
         <TarjetaPilar
           titulo="Liquidez"
-          subtitulo="Cuenta Corriente (Operativa)"
-          aportado={patrimonio.balanceCorriente}
-          valorActual={patrimonio.balanceCorriente}
+          subtitulo="Cuentas Corrientes"
+          aportado={liquidezCuentas}
+          valorActual={liquidezCuentas}
           icono="water-outline"
           colorAcento={colors.info}
+          cuentas={cuentasCorrientes.map((c) => ({
+            id: c.id,
+            nombre: c.nombre,
+            balance: c.balance,
+          }))}
+          onAgregarCuenta={() => setModalCuentasVisible(true)}
+          onCuentaPress={(id) => {
+            const cuenta = cuentasCorrientes.find((c) => c.id === id);
+            if (cuenta) setTraspasoOrigen(cuenta);
+          }}
         />
         <TarjetaPilar
           titulo="Crecimiento"
@@ -587,8 +625,11 @@ function ModalSaldarDeuda({
   onClose: () => void;
 }) {
   const { saldarDeuda } = useDeudas();
+  const { cuentas } = useCuentas();
+  const cuentasCorrientes = cuentas.filter((c) => c.tipo === "corriente");
 
   const [cantidad, setCantidad] = useState("");
+  const [cuenta, setCuenta] = useState("");
   const [generarMovimiento, setGenerarMovimiento] = useState(true);
   const [guardando, setGuardando] = useState(false);
 
@@ -598,6 +639,12 @@ function ModalSaldarDeuda({
       setGenerarMovimiento(true); // Checkbox marcado por defecto
     }
   }, [balance]);
+
+  useEffect(() => {
+    if (!cuenta && cuentasCorrientes.length > 0) {
+      setCuenta(cuentasCorrientes[0].nombre);
+    }
+  }, [cuentasCorrientes, cuenta]);
 
   if (!balance) return null;
 
@@ -615,6 +662,7 @@ function ModalSaldarDeuda({
         contacto_id: balance.contacto.id,
         importe,
         registrar_transaccion: generarMovimiento,
+        cuenta,
       });
       onClose();
     } catch (e) {
@@ -693,6 +741,42 @@ function ModalSaldarDeuda({
               Se perdonará la deuda: quedará saldada sin registrar ningún
               movimiento.
             </Text>
+          )}
+
+          {generarMovimiento && (
+            <>
+              <Text style={styles.labelSaldar}>
+                {soyDeudor ? "Pagar desde la cuenta" : "Cobrar en la cuenta"}
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+              >
+                {cuentasCorrientes.map((c) => {
+                  const activo = c.nombre === cuenta;
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      onPress={() => setCuenta(c.nombre)}
+                      style={[
+                        styles.chipCuenta,
+                        activo && styles.chipCuentaActivo,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chipCuentaTexto,
+                          activo && styles.chipCuentaTextoActivo,
+                        ]}
+                      >
+                        {c.nombre}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
           )}
 
           <TouchableOpacity
@@ -879,6 +963,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   txtCheckSaldar: { fontSize: 13, color: colors.texto, flex: 1 },
+  chipCuenta: {
+    backgroundColor: colors.fondo,
+    borderWidth: 1,
+    borderColor: colors.bordeFuerte,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  chipCuentaActivo: {
+    backgroundColor: colors.primario,
+    borderColor: colors.primario,
+  },
+  chipCuentaTexto: { fontSize: 13, color: colors.texto, fontWeight: "500" },
+  chipCuentaTextoActivo: { color: "#fff", fontWeight: "700" },
   txtNotaGasto: {
     fontSize: 12,
     color: colors.textoSuave,

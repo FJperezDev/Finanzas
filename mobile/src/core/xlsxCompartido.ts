@@ -14,6 +14,7 @@ export interface FilaGuardable {
   Categoria_Macro: string;
   Subcategoria: string;
   Concepto: string;
+  Cuenta: string;
   Importe: number;
   [extra: string]: unknown;
 }

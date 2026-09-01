@@ -212,6 +212,7 @@ class ApiTests(TestCase):
             categoria_macro="Nómina",
             subcategoria="Nomina",
             concepto="Nómina Enero",
+            cuenta="Unicaja",
             importe=250000,
         )
         Transaccion.objects.create(
@@ -221,7 +222,7 @@ class ApiTests(TestCase):
             subcategoria="Alquiler",
             concepto="Alquiler Piso",
             importe=115000,
-            extras={"Cuenta": "Unicaja"},
+            extras={"Bizum": "Sí"},
         )
         self.client.defaults["HTTP_AUTHORIZATION"] = (
             f"Bearer {tokens_de_admin()['access']}"
@@ -232,7 +233,8 @@ class ApiTests(TestCase):
         self.assertEqual(respuesta.status_code, 200)
         datos = respuesta.json()
         self.assertEqual(len(datos["filas"]), 2)
-        self.assertIn("Cuenta", datos["columnas_extra"])
+        self.assertEqual(datos["filas"][0]["Cuenta"], "Unicaja")
+        self.assertIn("Bizum", datos["columnas_extra"])
         self.assertEqual(datos["filas"][0]["Importe"], 2500.0)
 
     def test_guardar_valida_y_rechaza(self) -> None:
@@ -274,8 +276,9 @@ class ApiTests(TestCase):
                 "Categoria_Macro": "Nómina",
                 "Subcategoria": "Nómina",
                 "Concepto": "Nómina",
-                "Importe": 2500,
                 "Cuenta": "Revolut",
+                "Importe": 2500,
+                "Bizum": "Sí",
             }
         ]
         respuesta = self.client.post(
@@ -284,7 +287,8 @@ class ApiTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(respuesta.status_code, 200)
-        self.assertEqual(Transaccion.objects.first().extras, {"Cuenta": "Revolut"})
+        self.assertEqual(Transaccion.objects.first().cuenta, "Revolut")
+        self.assertEqual(Transaccion.objects.first().extras, {"Bizum": "Sí"})
 
     def test_exportar_descarga_xlsx(self) -> None:
         respuesta = self.client.get(reverse("exportar_transacciones"))

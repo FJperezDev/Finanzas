@@ -43,8 +43,8 @@ export function ModalAnadirColumna({
       onCerrar={onCerrar}
     >
       <Text style={styles.modalAyuda}>
-        Añade columnas adicionales para clasificar el origen de tus movimientos
-        (ej. Unicaja, Revolut, Efectivo).
+        Añade columnas adicionales para clasificar tus movimientos (ej. Bizum,
+        tarjeta, notas…).
       </Text>
       <View style={styles.modalInputContenedor}>
         <View style={styles.modalInputWrapper}>

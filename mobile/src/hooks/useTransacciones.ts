@@ -7,6 +7,7 @@ import {
   type Contacto,
   type GastoCompartido,
   type FilaTransaccion, // <-- Añadido
+  type Cuenta,
 } from "../core/calculations";
 import { useEditorStore, type EditorState } from "../state/editorStore"; // <-- Añadido EditorState
 
@@ -94,5 +95,29 @@ export function useTransacciones(): EstadoTransacciones & {
     error,
     filas: conImporteFirmado(filas),
     recargar: cargar,
+  };
+}
+
+export interface EstadoCuentas {
+  cuentas: Cuenta[];
+  crearCuenta: EditorState["crearCuenta"];
+  actualizarCuenta: EditorState["actualizarCuenta"];
+  eliminarCuenta: EditorState["eliminarCuenta"];
+  crearTraspaso: EditorState["crearTraspaso"];
+}
+
+export function useCuentas(): EstadoCuentas {
+  const cuentas = useEditorStore((s) => s.cuentas);
+  const crearCuenta = useEditorStore((s) => s.crearCuenta);
+  const actualizarCuenta = useEditorStore((s) => s.actualizarCuenta);
+  const eliminarCuenta = useEditorStore((s) => s.eliminarCuenta);
+  const crearTraspaso = useEditorStore((s) => s.crearTraspaso);
+
+  return {
+    cuentas,
+    crearCuenta,
+    actualizarCuenta,
+    eliminarCuenta,
+    crearTraspaso,
   };
 }

@@ -17,6 +17,8 @@ import type {
   Contacto,
   FilaTransaccion,
   GastoCompartido,
+  Cuenta,
+  TraspasoHistorial,
 } from "../core/calculations";
 import {
   CATEGORIAS_MACRO,
@@ -38,6 +40,12 @@ import {
   eliminarContactoApi,
   saldarDeudaApi,
   subirAvatarApi,
+  leerCuentas,
+  crearCuentaApi,
+  actualizarCuentaApi,
+  eliminarCuentaApi,
+  crearTraspasoApi,
+  leerTraspasos,
 } from "../core/xlsxService";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +88,9 @@ export interface EditorState {
 
   contactos: Contacto[];
   gastosCompartidos: GastoCompartido[];
+  cuentas: Cuenta[];
+  traspasos: TraspasoHistorial[];
+  modoVista: "movimientos" | "traspasos";
 
   crearContacto: (payload: Omit<Contacto, "id">) => Promise<void>;
 
@@ -91,6 +102,7 @@ export interface EditorState {
     contacto_id: number;
     importe?: number;
     registrar_transaccion: boolean;
+    cuenta?: string;
   }) => Promise<void>;
 
   crearGastoCompartido: (payload: {
@@ -102,6 +114,20 @@ export interface EditorState {
     tipo_reparto: "IGUALES" | "EXACTO";
     pagador_id: number | null;
     participantes: { contacto_id: number; importe_exacto?: number }[];
+  }) => Promise<void>;
+
+  crearCuenta: (payload: { nombre: string; tipo: string }) => Promise<void>;
+  actualizarCuenta: (
+    cuentaId: number,
+    payload: { nombre: string; tipo: string },
+  ) => Promise<void>;
+  eliminarCuenta: (id: number) => Promise<void>;
+  crearTraspaso: (payload: {
+    fecha: string;
+    importe: number;
+    concepto: string;
+    cuenta_origen_id: number;
+    cuenta_destino_id: number;
   }) => Promise<void>;
 
   // Acciones
@@ -128,6 +154,7 @@ export interface EditorState {
 
   modalAnadirVisible: boolean;
   setModalAnadirVisible: (visible: boolean) => void;
+  setModoVista: (modo: "movimientos" | "traspasos") => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +174,7 @@ function filaNueva(importe = 0): FilaTransaccion {
     Categoria_Macro: "Fijo",
     Subcategoria: "",
     Concepto: "",
+    Cuenta: "",
     Importe: importe,
   };
 }
@@ -242,6 +270,7 @@ export function validarNormalizar(filas: FilaTransaccion[]): {
     ...f,
     Subcategoria: f.Subcategoria ?? "",
     Concepto: f.Concepto ?? "",
+    Cuenta: f.Cuenta ?? "",
     Importe: Number(f.Importe),
   }));
   return { filas: ordenarPorFecha(normalizadas), errores: [] };
@@ -317,20 +346,27 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   contactos: [],
   gastosCompartidos: [],
+  cuentas: [],
+  traspasos: [],
+  modoVista: "movimientos",
 
   modalAnadirVisible: false,
   setModalAnadirVisible: (visible) => set({ modalAnadirVisible: visible }),
+  setModoVista: (modo) => set({ modoVista: modo }),
 
   // -------------------------------------------------------------------------
   cargar: async () => {
     set({ cargando: true, error: null });
     try {
       await generarSeedSiNecesario();
-      const [filas, contactos, gastosCompartidos] = await Promise.all([
-        leerTransacciones(),
-        leerContactos(), // Función nueva a crear
-        leerGastosCompartidos(), // Función nueva a crear
-      ]);
+      const [filas, contactos, gastosCompartidos, cuentas, traspasos] =
+        await Promise.all([
+          leerTransacciones(),
+          leerContactos(), // Función nueva a crear
+          leerGastosCompartidos(), // Función nueva a crear
+          leerCuentas(),
+          leerTraspasos(),
+        ]);
 
       const { anio, mes } = filtrosPorDefecto(filas);
       const primera = filas.find((f) => {
@@ -351,6 +387,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         mes,
         contactos,
         gastosCompartidos,
+        cuentas,
+        traspasos,
         sucio: false,
       });
     } catch (exc) {
@@ -702,6 +740,99 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         flash: {
           tipo: "error",
           texto: `Error al saldar: ${exc instanceof Error ? exc.message : exc}`,
+        },
+      });
+    }
+  },
+
+  crearCuenta: async (payload) => {
+    set({ guardando: true });
+    try {
+      await crearCuentaApi(payload);
+      const cuentasActualizadas = await leerCuentas();
+      set({
+        cuentas: cuentasActualizadas,
+        guardando: false,
+        flash: { tipo: "ok", texto: "Cuenta creada correctamente." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: exc instanceof Error ? exc.message : String(exc),
+        },
+      });
+    }
+  },
+
+  actualizarCuenta: async (cuentaId, payload) => {
+    set({ guardando: true });
+    try {
+      await actualizarCuentaApi(cuentaId, payload);
+      // Renombrar una cuenta también actualiza la columna 'Cuenta' de las
+      // transacciones, así que recargamos todo para mantenerlo coherente.
+      await get().cargar();
+      set({
+        guardando: false,
+        flash: { tipo: "ok", texto: "Cuenta actualizada correctamente." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: exc instanceof Error ? exc.message : String(exc),
+        },
+      });
+    }
+  },
+
+  eliminarCuenta: async (id) => {
+    set({ guardando: true });
+    try {
+      await eliminarCuentaApi(id);
+      const [cuentasActualizadas, traspasosActualizados] = await Promise.all([
+        leerCuentas(),
+        leerTraspasos(),
+      ]);
+      set({
+        cuentas: cuentasActualizadas,
+        traspasos: traspasosActualizados,
+        guardando: false,
+        flash: { tipo: "info", texto: "Cuenta eliminada." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: exc instanceof Error ? exc.message : String(exc),
+        },
+      });
+    }
+  },
+
+  crearTraspaso: async (payload) => {
+    set({ guardando: true });
+    try {
+      await crearTraspasoApi(payload);
+      const [cuentasActualizadas, traspasosActualizados] = await Promise.all([
+        leerCuentas(),
+        leerTraspasos(),
+      ]);
+      set({
+        cuentas: cuentasActualizadas,
+        traspasos: traspasosActualizados,
+        guardando: false,
+        flash: { tipo: "ok", texto: "Traspaso registrado correctamente." },
+      });
+    } catch (exc) {
+      set({
+        guardando: false,
+        flash: {
+          tipo: "error",
+          texto: exc instanceof Error ? exc.message : String(exc),
         },
       });
     }

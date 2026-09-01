@@ -15,6 +15,7 @@ export interface FilaTransaccion {
   Categoria_Macro: string;
   Subcategoria: string;
   Concepto: string;
+  Cuenta: string;
   Importe: number;
   Importe_Firmado?: number;
   [extra: string]: unknown;
@@ -357,6 +358,36 @@ export interface BalanceContacto {
   meDebe: number; // Lo que pagué yo por él
   leDebo: number; // Lo que pagó él por mí
   balanceNeto: number; // Positivo = me debe dinero; Negativo = le debo dinero
+}
+
+// ---------------------------------------------------------------------------
+// Cuentas corrientes y de inversión + traspasos
+// ---------------------------------------------------------------------------
+export type TipoCuenta = "corriente" | "cartera" | "remunerada";
+
+export interface Cuenta {
+  id: number;
+  nombre: string;
+  tipo: TipoCuenta;
+  balance: number;
+}
+
+export interface Traspaso {
+  id: number;
+  fecha: string;
+  importe: number;
+  concepto: string;
+  cuenta_origen_id: number;
+  cuenta_destino_id: number;
+}
+
+export interface TraspasoHistorial {
+  id: number;
+  fecha: string;
+  concepto: string;
+  cuenta_origen: string;
+  cuenta_destino: string;
+  importe: number;
 }
 
 /**

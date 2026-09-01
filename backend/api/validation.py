@@ -8,6 +8,7 @@ COLUMNAS_EXCEL = [
     "Categoria_Macro",
     "Subcategoria",
     "Concepto",
+    "Cuenta",
     "Importe",
 ]
 

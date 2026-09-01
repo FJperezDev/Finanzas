@@ -95,6 +95,22 @@ def filas_mes(anio: int, mes: int) -> list[tuple]:
     return filas
 
 
+CUENTA_PRIMARIA = "Unicaja"
+
+
+def _cuenta_por_defecto(macro: str, sub: str) -> str:
+    """Asigna una cuenta corriente a cada fila de la semilla.
+
+    Repartimos el gasto entre las tres cuentas del usuario (Unicaja,
+    Revolut y Efectivo) para que el balance individualizado tenga sentido.
+    """
+    if sub in ("Restaurantes", "Ocio_Vario", "Comida"):
+        return "Revolut"
+    if sub in ("Suministros", "Seguros", "Transporte"):
+        return "Efectivo"
+    return CUENTA_PRIMARIA
+
+
 def generar_filas_seed() -> list[dict]:
     """Devuelve la lista completa de filas de la semilla."""
     meses = [(2025, m) for m in range(6, 13)] + [(2026, 1)]
@@ -109,6 +125,7 @@ def generar_filas_seed() -> list[dict]:
                         "Categoria_Macro": macro,
                         "Subcategoria": sub,
                         "Concepto": concepto,
+                        "Cuenta": _cuenta_por_defecto(macro, sub),
                         "Importe": importe,
                     }
                 )
@@ -121,6 +138,7 @@ def generar_filas_seed() -> list[dict]:
                         "Categoria_Macro": macro,
                         "Subcategoria": sub,
                         "Concepto": concepto,
+                        "Cuenta": _cuenta_por_defecto(macro, sub),
                         "Importe": importe,
                     }
                 )
@@ -194,3 +212,16 @@ def generar_contactos_seed() -> list[dict]:
 
 def generar_gastos_compartidos_seed() -> list[dict]:
     return GASTOS_COMPARTIDOS_SEED
+
+
+CUENTAS_SEED = [
+    {"nombre": "Unicaja", "tipo": "corriente"},
+    {"nombre": "Revolut", "tipo": "corriente"},
+    {"nombre": "Efectivo", "tipo": "corriente"},
+    {"nombre": "Cartera de Inversión", "tipo": "cartera"},
+    {"nombre": "Cuenta Remunerada", "tipo": "remunerada"},
+]
+
+
+def generar_cuentas_seed() -> list[dict]:
+    return CUENTAS_SEED

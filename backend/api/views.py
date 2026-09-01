@@ -27,12 +27,21 @@ from PIL import Image
 
 from .auth import requiere_token
 from .excel import construir_excel, filas_a_columnas
-from .models import Backup, Transaccion, Contacto, GastoCompartido, Participacion
+from .models import (
+    Backup,
+    Transaccion,
+    Contacto,
+    GastoCompartido,
+    Participacion,
+    Cuenta,
+    Traspaso,
+)
 from .seed import (
     generar_filas_seed,
     importe_entero,
     generar_contactos_seed,
     generar_gastos_compartidos_seed,
+    generar_cuentas_seed,
 )
 from .validation import COLUMNAS_EXCEL, MAX_BACKUPS, validar_filas, CATEGORIAS_MACRO
 
@@ -48,10 +57,14 @@ def fila_a_dict(t: Transaccion) -> dict:
         "Categoria_Macro": t.categoria_macro,
         "Subcategoria": t.subcategoria,
         "Concepto": t.concepto,
+        "Cuenta": t.cuenta,
         "Importe": float(t.importe) / 100,
     }
 
     datos.update(t.extras or {})
+    # La columna 'Cuenta' es de primera clase: el valor canónico vive en el
+    # campo `cuenta`, no en `extras` (por si quedó ahí de versiones previas).
+    datos["Cuenta"] = t.cuenta
     return datos
 
 
@@ -123,6 +136,7 @@ def guardar_transacciones(request) -> JsonResponse:
                 categoria_macro=fila["Categoria_Macro"],
                 subcategoria=str(fila.get("Subcategoria") or ""),
                 concepto=str(fila.get("Concepto") or ""),
+                cuenta=str(fila.get("Cuenta") or ""),
                 importe=importe_entero(float(fila["Importe"])),
                 extras=extras,
             )
@@ -195,9 +209,28 @@ def health(_request) -> JsonResponse:
 # ---------------------------------------------------------------------------
 # Semilla bajo demanda (si la BD está vacía)
 # ---------------------------------------------------------------------------
+def _cuenta_primaria() -> str:
+    """Nombre de la primera cuenta corriente (para atribuir movimientos
+    generados automáticamente por el backend)."""
+    nombre = (
+        Cuenta.objects.filter(tipo="corriente")
+        .order_by("id")
+        .values_list("nombre", flat=True)
+        .first()
+    )
+    return nombre or "Unicaja"
+
+
 def seed_initial() -> dict:
     if Transaccion.objects.exists() or Contacto.objects.exists():
         return {"seed": False}
+
+    # Cuentas corrientes y de inversión (destino de los traspasos).
+    for c_data in generar_cuentas_seed():
+        Cuenta.objects.get_or_create(
+            nombre=c_data["nombre"], defaults={"tipo": c_data["tipo"]}
+        )
+
     filas = generar_filas_seed()
     for fila in filas:
         Transaccion.objects.create(
@@ -206,6 +239,7 @@ def seed_initial() -> dict:
             categoria_macro=fila["Categoria_Macro"],
             subcategoria=fila["Subcategoria"],
             concepto=fila["Concepto"],
+            cuenta=fila.get("Cuenta", ""),
             importe=importe_entero(fila["Importe"]),
         )
 
@@ -245,6 +279,7 @@ def seed_initial() -> dict:
                 categoria_macro=gasto.categoria_macro,
                 subcategoria=gasto.subcategoria,
                 concepto=gasto.concepto,
+                cuenta=_cuenta_primaria(),
                 importe=importe_entero(float(gasto.importe_total)),
             )
             gasto.transaccion = tx
@@ -388,6 +423,7 @@ def crear_gasto_compartido(request) -> JsonResponse:
                 categoria_macro=gasto.categoria_macro,
                 subcategoria=gasto.subcategoria,
                 concepto=gasto.concepto,
+                cuenta=_cuenta_primaria(),
                 importe=importe_entero(float(gasto.importe_total)),
             )
             gasto.transaccion = nueva_transaccion
@@ -697,6 +733,8 @@ def saldar_gasto_compartido(request) -> JsonResponse:
 
     registrar_transaccion = bool(cuerpo.get("registrar_transaccion", True))
 
+    cuenta = str(cuerpo.get("cuenta") or "").strip() or _cuenta_primaria()
+
     importe_solicitado = None
     if cuerpo.get("importe") not in (None, ""):
         try:
@@ -867,6 +905,7 @@ def saldar_gasto_compartido(request) -> JsonResponse:
             categoria_macro="Deuda",
             subcategoria="Saldar",
             concepto=f"Saldar cuentas con {contacto.nombre}",
+            cuenta=cuenta,
             importe=importe_entero(float(importe_a)),
         )
         transaccion_id = tx.id
@@ -928,3 +967,238 @@ def actualizar_participacion(request, participacion_id: int) -> JsonResponse:
             "perdonado": participacion.perdonado,
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Cuentas corrientes y de inversión + traspasos
+# ---------------------------------------------------------------------------
+def _balance_de_cuenta(cuenta: Cuenta) -> Decimal:
+    """Balance actual de una cuenta.
+
+    Suma los ingresos y resta los gastos que tienen esa cuenta en la columna
+    'Cuenta', y suma/resta los traspasos de entrada/salida. Los traspasos no
+    son transacciones (no contabilizan como gasto), solo mueven dinero entre
+    cuentas.
+    """
+    total = Decimal("0.00")
+    for t in Transaccion.objects.filter(cuenta=cuenta.nombre):
+        signo = Decimal("1") if t.tipo == "Ingreso" else Decimal("-1")
+        total += signo * (Decimal(t.importe) / 100)
+
+    total += sum(
+        (t.importe for t in Traspaso.objects.filter(cuenta_destino=cuenta)),
+        Decimal("0.00"),
+    )
+    total -= sum(
+        (t.importe for t in Traspaso.objects.filter(cuenta_origen=cuenta)),
+        Decimal("0.00"),
+    )
+    return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def cuenta_a_dict(cuenta: Cuenta) -> dict:
+    return {
+        "id": cuenta.id,
+        "nombre": cuenta.nombre,
+        "tipo": cuenta.tipo,
+        "balance": float(_balance_de_cuenta(cuenta)),
+    }
+
+
+@require_GET
+@requiere_token
+def listar_cuentas(_request) -> JsonResponse:
+    return JsonResponse(
+        {"cuentas": [cuenta_a_dict(c) for c in Cuenta.objects.all()]}
+    )
+
+
+@csrf_exempt
+@require_POST
+@requiere_token
+def crear_cuenta(request) -> JsonResponse:
+    try:
+        cuerpo = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"errores": ["Cuerpo JSON inválido."]}, status=400)
+
+    nombre = str(cuerpo.get("nombre") or "").strip()
+    tipo = str(cuerpo.get("tipo") or "corriente").strip()
+
+    if not nombre:
+        return JsonResponse(
+            {"errores": ["El nombre de la cuenta es obligatorio."]}, status=400
+        )
+    if tipo not in ("corriente", "cartera", "remunerada"):
+        return JsonResponse(
+            {"errores": ["El tipo de cuenta no es válido."]}, status=400
+        )
+    if Cuenta.objects.filter(nombre=nombre).exists():
+        return JsonResponse(
+            {"errores": ["Ya existe una cuenta con ese nombre."]}, status=400
+        )
+
+    cuenta = Cuenta.objects.create(nombre=nombre, tipo=tipo)
+    return JsonResponse({"ok": True, "cuenta": cuenta_a_dict(cuenta)})
+
+
+@csrf_exempt
+@require_POST
+@requiere_token
+def actualizar_cuenta(request, cuenta_id: int) -> JsonResponse:
+    try:
+        cuenta = Cuenta.objects.get(id=cuenta_id)
+    except Cuenta.DoesNotExist:
+        return JsonResponse(
+            {"errores": ["La cuenta no existe o ya fue eliminada."]}, status=404
+        )
+
+    try:
+        cuerpo = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"errores": ["Cuerpo JSON inválido."]}, status=400)
+
+    nombre = str(cuerpo.get("nombre") or "").strip()
+    tipo = str(cuerpo.get("tipo") or cuenta.tipo).strip()
+
+    if not nombre:
+        return JsonResponse(
+            {"errores": ["El nombre de la cuenta es obligatorio."]}, status=400
+        )
+    if tipo not in ("corriente", "cartera", "remunerada"):
+        return JsonResponse(
+            {"errores": ["El tipo de cuenta no es válido."]}, status=400
+        )
+
+    nombre_anterior = cuenta.nombre
+    duplicada = Cuenta.objects.filter(nombre=nombre).exclude(id=cuenta.id).exists()
+    if duplicada:
+        return JsonResponse(
+            {"errores": ["Ya existe una cuenta con ese nombre."]}, status=400
+        )
+
+    with transaction.atomic():
+        if nombre != nombre_anterior:
+            # Al renombrar, actualizamos la columna 'Cuenta' de las
+            # transacciones para no dejar movimientos huérfanos.
+            Transaccion.objects.filter(cuenta=nombre_anterior).update(
+                cuenta=nombre
+            )
+        cuenta.nombre = nombre
+        cuenta.tipo = tipo
+        cuenta.save(update_fields=["nombre", "tipo", "actualizado"])
+
+    return JsonResponse({"ok": True, "cuenta": cuenta_a_dict(cuenta)})
+
+
+@csrf_exempt
+@require_POST
+@requiere_token
+def eliminar_cuenta(request, cuenta_id: int) -> JsonResponse:
+    try:
+        cuenta = Cuenta.objects.get(id=cuenta_id)
+    except Cuenta.DoesNotExist:
+        return JsonResponse(
+            {"errores": ["La cuenta no existe o ya fue eliminada."]}, status=404
+        )
+
+    cuenta.delete()
+    return JsonResponse({"ok": True})
+
+
+@csrf_exempt
+@require_POST
+@requiere_token
+def crear_traspaso(request) -> JsonResponse:
+    try:
+        cuerpo = json.loads(request.body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"errores": ["Cuerpo JSON inválido."]}, status=400)
+
+    fecha = cuerpo.get("fecha")
+    concepto = str(cuerpo.get("concepto") or "").strip()
+
+    try:
+        fecha_parsed = date.fromisoformat(str(fecha))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {"errores": ["El campo 'fecha' debe ser una fecha válida (YYYY-MM-DD)."]},
+            status=400,
+        )
+
+    try:
+        importe = Decimal(str(cuerpo.get("importe")))
+        if importe <= 0:
+            return JsonResponse(
+                {"errores": ["El importe del traspaso debe ser mayor que 0."]},
+                status=400,
+            )
+    except (InvalidOperation, ValueError, TypeError):
+        return JsonResponse(
+            {"errores": ["El campo 'importe' debe ser un número."]}, status=400
+        )
+
+    try:
+        origen_id = int(cuerpo.get("cuenta_origen_id"))
+        destino_id = int(cuerpo.get("cuenta_destino_id"))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {
+                "errores": [
+                    "Los campos 'cuenta_origen_id' y 'cuenta_destino_id' son obligatorios."
+                ]
+            },
+            status=400,
+        )
+
+    if origen_id == destino_id:
+        return JsonResponse(
+            {"errores": ["La cuenta de origen y destino deben ser distintas."]},
+            status=400,
+        )
+
+    try:
+        origen = Cuenta.objects.get(id=origen_id)
+        destino = Cuenta.objects.get(id=destino_id)
+    except Cuenta.DoesNotExist:
+        return JsonResponse(
+            {"errores": ["Una de las cuentas del traspaso no existe."]},
+            status=400,
+        )
+
+    traspaso = Traspaso.objects.create(
+        fecha=fecha_parsed,
+        importe=importe,
+        concepto=concepto,
+        cuenta_origen=origen,
+        cuenta_destino=destino,
+    )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "traspaso_id": traspaso.id,
+            "cuenta_origen": cuenta_a_dict(origen),
+            "cuenta_destino": cuenta_a_dict(destino),
+        }
+    )
+
+
+@require_GET
+@requiere_token
+def listar_traspasos(_request) -> JsonResponse:
+    """Historial de traspasos para su visualización en la cuadrícula."""
+    traspasos = []
+    consulta = Traspaso.objects.select_related("cuenta_origen", "cuenta_destino")
+    for t in consulta:
+        traspasos.append(
+            {
+                "id": t.id,
+                "fecha": t.fecha.isoformat(),
+                "concepto": t.concepto,
+                "cuenta_origen": t.cuenta_origen.nombre,
+                "cuenta_destino": t.cuenta_destino.nombre,
+                "importe": float(t.importe),
+            }
+        )
+    return JsonResponse({"traspasos": traspasos})

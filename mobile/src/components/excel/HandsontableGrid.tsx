@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from "react";
 
 interface Props {
   datos: any[];
+  cuentas?: string[];
+  readOnly?: boolean;
   onCellChange: (id: string, columna: string, valor: any) => void;
   onRowsRemove?: (ids: string[]) => void;
   onColumnRemove?: (columnas: string[]) => void;
@@ -11,6 +13,8 @@ interface Props {
 
 export function HandsontableGrid({
   datos,
+  cuentas = [],
+  readOnly = false,
   onCellChange,
   onRowsRemove,
   onColumnRemove,
@@ -263,6 +267,12 @@ export function HandsontableGrid({
         const container = document.getElementById('hot-container');
         let hotInstance = null;
 
+        // Cuentas disponibles para la columna 'Cuenta'
+        const CUENTAS = ${JSON.stringify(cuentas)};
+
+        // Modo solo lectura (p. ej. historial de traspasos)
+        const READONLY = ${readOnly};
+
         // DICCIONARIOS DE RELACIONES
         const MAPA_CATEGORIAS = {
           "Ingreso": ["Nómina", "Regalo", "Deuda"],
@@ -314,6 +324,9 @@ export function HandsontableGrid({
             }
             
             if (key === 'Importe') return { data: key, type: 'numeric', numericFormat: { pattern: '0,0.00' } };
+            if (key === 'Cuenta') {
+              return { data: key, type: 'dropdown', source: CUENTAS };
+            }
             if (key === 'Concepto') {
               return {
                 data: key,
@@ -382,6 +395,7 @@ export function HandsontableGrid({
             licenseKey: 'non-commercial-and-evaluation',
             outsideClickDeselects: true,
             undo: false, // deshabilitamos el undo interno; lo gestiona la app (máx. 7)
+            readOnly: READONLY,
             
             beforeChange: function(changes, source) {
               if (!changes) return;
@@ -439,7 +453,7 @@ export function HandsontableGrid({
             },
             
             beforeRemoveCol: function(index, amount) {
-              const columnasProtegidas = ['Fecha', 'Tipo', 'Categoria_Macro', 'Subcategoria', 'Concepto', 'Importe'];
+              const columnasProtegidas = ['Fecha', 'Tipo', 'Categoria_Macro', 'Subcategoria', 'Concepto', 'Cuenta', 'Importe'];
               const colsABorrar = [];
               for(let i = 0; i < amount; i++) {
                 const prop = hotInstance.colToProp(index + i);
@@ -470,12 +484,13 @@ export function HandsontableGrid({
               }
 
               if (event.key === 'Delete' || event.key === 'Backspace') {
+                if (READONLY) return;
                 const selected = hotInstance.getSelected() || [];
                 const totalRows = hotInstance.countRows();
                 const totalCols = hotInstance.countCols();
                 
                 if (totalRows === 0 || totalCols === 0) return;
-                const columnasProtegidas = ['Fecha', 'Tipo', 'Categoria_Macro', 'Subcategoria', 'Concepto', 'Importe'];
+                const columnasProtegidas = ['Fecha', 'Tipo', 'Categoria_Macro', 'Subcategoria', 'Concepto', 'Cuenta', 'Importe'];
 
                 let esSeleccionTotal = false;
                 let esSeleccionFila = false;

@@ -52,5 +52,20 @@ urlpatterns = [
         views.actualizar_participacion,
         name="actualizar_participacion",
     ),
+    # Cuentas corrientes y de inversión + traspasos
+    path("cuentas/", views.listar_cuentas, name="listar_cuentas"),
+    path("cuentas/crear/", views.crear_cuenta, name="crear_cuenta"),
+    path(
+        "cuentas/<int:cuenta_id>/actualizar/",
+        views.actualizar_cuenta,
+        name="actualizar_cuenta",
+    ),
+    path(
+        "cuentas/<int:cuenta_id>/eliminar/",
+        views.eliminar_cuenta,
+        name="eliminar_cuenta",
+    ),
+    path("traspasos/crear/", views.crear_traspaso, name="crear_traspaso"),
+    path("traspasos/", views.listar_traspasos, name="listar_traspasos"),
     path("health/", views.health, name="health"),
 ]

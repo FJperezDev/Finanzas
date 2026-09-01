@@ -13,7 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { ModalCentro, Boton } from "../ui";
 import { useEditorStore } from "../../state/editorStore";
-import { useDeudas } from "../../hooks/useTransacciones";
+import { useDeudas, useCuentas } from "../../hooks/useTransacciones";
+import type { Cuenta } from "../../core/calculations";
 import { colors } from "../../theme";
 
 // --- MAPAS LÓGICOS ---
@@ -413,12 +414,16 @@ function FormularioCompartido({ onCerrar }: { onCerrar: () => void }) {
 // ============================================================================
 function FormularioPersonal({ onCerrar }: { onCerrar: () => void }) {
   const agregarFila = useEditorStore((s: any) => s.agregarFila);
+  const { cuentas } = useCuentas();
+  const cuentasCorrientes = cuentas.filter((c) => c.tipo === "corriente");
+
   const [form, setForm] = useState({
     Fecha: new Date().toISOString().split("T")[0],
     Tipo: "Gasto",
     Categoria_Macro: "Fijo",
     Subcategoria: "Gastos",
     Concepto: "",
+    Cuenta: "",
     Importe: "",
   });
 
@@ -437,6 +442,12 @@ function FormularioPersonal({ onCerrar }: { onCerrar: () => void }) {
       setForm((prev) => ({ ...prev, Subcategoria: subcats[0] || "" }));
     }
   }, [form.Categoria_Macro]);
+
+  useEffect(() => {
+    if (!form.Cuenta && cuentasCorrientes.length > 0) {
+      setForm((prev) => ({ ...prev, Cuenta: cuentasCorrientes[0].nombre }));
+    }
+  }, [cuentasCorrientes, form.Cuenta]);
 
   const guardar = () => {
     if (!form.Concepto || !form.Importe) return;
@@ -504,6 +515,15 @@ function FormularioPersonal({ onCerrar }: { onCerrar: () => void }) {
           />
         </View>
 
+        <View style={styles.formColUnico}>
+          <Text style={styles.formLabel}>Cuenta de origen</Text>
+          <SelectorPildoras
+            opciones={cuentasCorrientes.map((c) => c.nombre)}
+            valor={form.Cuenta}
+            onSelect={(c) => setForm({ ...form, Cuenta: c })}
+          />
+        </View>
+
         <View style={styles.formRow}>
           <View style={[styles.formCol, { flex: 1 }]}>
             <Text style={styles.formLabel}>Concepto (Descripción)</Text>
@@ -531,6 +551,167 @@ function FormularioPersonal({ onCerrar }: { onCerrar: () => void }) {
 }
 
 // ============================================================================
+// FORMULARIO: TRASPASO ENTRE CUENTAS (NO ES GASTO)
+// ============================================================================
+function FormularioTraspaso({
+  onCerrar,
+  cuentaOrigenInicial,
+}: {
+  onCerrar: () => void;
+  cuentaOrigenInicial?: Cuenta | null;
+}) {
+  const { cuentas, crearTraspaso } = useCuentas();
+  const [guardando, setGuardando] = useState(false);
+
+  const [form, setForm] = useState({
+    Fecha: new Date().toISOString().split("T")[0],
+    Importe: "",
+    Concepto: "",
+    Cuenta_Origen_ID: 0,
+    Cuenta_Destino_ID: 0,
+  });
+
+  useEffect(() => {
+    if (cuentas.length === 0) return;
+    const origenInicial = cuentaOrigenInicial ?? cuentas[0];
+    setForm((prev) => ({
+      ...prev,
+      Cuenta_Origen_ID: prev.Cuenta_Origen_ID || origenInicial.id,
+    }));
+  }, [cuentas, cuentaOrigenInicial]);
+
+  const origen = cuentas.find((c) => c.id === form.Cuenta_Origen_ID);
+  const destinos = cuentas.filter((c) => c.id !== form.Cuenta_Origen_ID);
+
+  // Si al cambiar origen el destino quedó igual, lo limpiamos.
+  useEffect(() => {
+    if (
+      form.Cuenta_Destino_ID &&
+      form.Cuenta_Destino_ID === form.Cuenta_Origen_ID
+    ) {
+      setForm((prev) => ({ ...prev, Cuenta_Destino_ID: 0 }));
+    }
+  }, [form.Cuenta_Origen_ID, form.Cuenta_Destino_ID]);
+
+  const guardar = async () => {
+    const importeNum = parseFloat(form.Importe.replace(",", "."));
+    if (
+      isNaN(importeNum) ||
+      importeNum <= 0 ||
+      !form.Cuenta_Origen_ID ||
+      !form.Cuenta_Destino_ID
+    )
+      return;
+
+    setGuardando(true);
+    try {
+      await crearTraspaso({
+        fecha: form.Fecha,
+        importe: importeNum,
+        concepto: form.Concepto,
+        cuenta_origen_id: form.Cuenta_Origen_ID,
+        cuenta_destino_id: form.Cuenta_Destino_ID,
+      });
+      setForm({ ...form, Importe: "", Concepto: "" });
+      onCerrar();
+    } catch (e) {
+      // El error se gestiona en el store global (flash).
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const formValido =
+    form.Importe.length > 0 &&
+    form.Cuenta_Origen_ID !== 0 &&
+    form.Cuenta_Destino_ID !== 0 &&
+    !guardando;
+
+  return (
+    <View style={styles.formContainerWrapper}>
+      <ScrollView
+        style={styles.formScrollView}
+        contentContainerStyle={styles.formGrid}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.formRow}>
+          <View style={styles.formCol}>
+            <Text style={styles.formLabel}>Fecha</Text>
+            <input
+              type="date"
+              value={form.Fecha}
+              onChange={(e) => setForm({ ...form, Fecha: e.target.value })}
+              style={inputDateStyles}
+            />
+          </View>
+          <View style={styles.formCol}>
+            <Text style={styles.formLabel}>Importe (€)</Text>
+            <TextInput
+              style={styles.formInput}
+              value={form.Importe}
+              onChangeText={(t) => setForm({ ...form, Importe: t })}
+              placeholder="0.00"
+              keyboardType="numeric"
+            />
+          </View>
+        </View>
+
+        <View style={styles.formColUnico}>
+          <Text style={styles.formLabel}>Cuenta de origen</Text>
+          <SelectorPildoras
+            opciones={cuentas.map((c) => c.nombre)}
+            valor={origen?.nombre ?? ""}
+            onSelect={(nombre) => {
+              const cuenta = cuentas.find((c) => c.nombre === nombre);
+              if (cuenta) setForm({ ...form, Cuenta_Origen_ID: cuenta.id });
+            }}
+          />
+        </View>
+
+        <View style={styles.formColUnico}>
+          <Text style={styles.formLabel}>Cuenta de destino</Text>
+          <SelectorPildoras
+            opciones={destinos.map((c) => c.nombre)}
+            valor={cuentas.find((c) => c.id === form.Cuenta_Destino_ID)?.nombre ?? ""}
+            onSelect={(nombre) => {
+              const cuenta = cuentas.find((c) => c.nombre === nombre);
+              if (cuenta) setForm({ ...form, Cuenta_Destino_ID: cuenta.id });
+            }}
+          />
+        </View>
+
+        <View style={styles.formRow}>
+          <View style={[styles.formCol, { flex: 1 }]}>
+            <Text style={styles.formLabel}>Concepto (Opcional)</Text>
+            <TextInput
+              style={styles.formInput}
+              value={form.Concepto}
+              onChangeText={(t) => setForm({ ...form, Concepto: t })}
+              placeholder="Ej. Traspaso a Revolut..."
+            />
+          </View>
+        </View>
+
+        <Text style={styles.notaTraspaso}>
+          Los traspasos mueven dinero entre cuentas sin contabilizarse como
+          gasto ni ingreso.
+        </Text>
+      </ScrollView>
+
+      <View style={styles.footerAccion}>
+        <Boton
+          etiqueta={guardando ? "Registrando..." : "Realizar Traspaso"}
+          icono="swap-horizontal"
+          onPress={guardar}
+          estilo={{ flex: 0 }}
+          deshabilitado={!formValido}
+        />
+      </View>
+    </View>
+  );
+}
+
+// ============================================================================
 // COMPONENTE PRINCIPAL DEL MODAL
 // ============================================================================
 export function ModalAnadirMovimiento({
@@ -540,7 +721,9 @@ export function ModalAnadirMovimiento({
   visible: boolean;
   onCerrar: () => void;
 }) {
-  const [modo, setModo] = useState<"PERSONAL" | "COMPARTIDO">("PERSONAL");
+  const [modo, setModo] = useState<"PERSONAL" | "COMPARTIDO" | "TRASPASO">(
+    "PERSONAL",
+  );
   const { height } = useWindowDimensions(); // Usamos esto para limitar la altura dinámicamente
 
   useEffect(() => {
@@ -590,12 +773,33 @@ export function ModalAnadirMovimiento({
               Compartido
             </Text>
           </Pressable>
+          <Pressable
+            onPress={() => setModo("TRASPASO")}
+            style={[styles.tab, modo === "TRASPASO" && styles.tabActive]}
+          >
+            <Ionicons
+              name="swap-horizontal"
+              size={18}
+              color={modo === "TRASPASO" ? "#fff" : colors.textoSuave}
+              style={{ marginBottom: 4 }}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                modo === "TRASPASO" && styles.tabTextActive,
+              ]}
+            >
+              Traspaso
+            </Text>
+          </Pressable>
         </View>
 
         {modo === "PERSONAL" ? (
           <FormularioPersonal onCerrar={onCerrar} />
-        ) : (
+        ) : modo === "COMPARTIDO" ? (
           <FormularioCompartido onCerrar={onCerrar} />
+        ) : (
+          <FormularioTraspaso onCerrar={onCerrar} />
         )}
       </View>
     </ModalCentro>
@@ -754,5 +958,12 @@ const styles = StyleSheet.create({
     color: colors.textoMuySuave,
     marginRight: 8,
     fontVariant: ["tabular-nums"],
+  },
+  notaTraspaso: {
+    fontSize: 12,
+    color: colors.textoSuave,
+    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: 4,
   },
 });

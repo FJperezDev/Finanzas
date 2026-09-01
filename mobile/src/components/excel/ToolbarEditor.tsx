@@ -170,6 +170,58 @@ function IndicadorGuardado() {
 // ---------------------------------------------------------------------------
 // Barra de herramientas principal
 // ---------------------------------------------------------------------------
+function SwitchVista() {
+  const modoVista = useEditorStore((s) => s.modoVista);
+  const setModoVista = useEditorStore((s) => s.setModoVista);
+
+  return (
+    <View style={styles.switchVista}>
+      <Pressable
+        onPress={() => setModoVista("movimientos")}
+        style={[
+          styles.switchOpcion,
+          modoVista === "movimientos" && styles.switchOpcionActiva,
+        ]}
+      >
+        <Ionicons
+          name="list"
+          size={14}
+          color={modoVista === "movimientos" ? "#fff" : colors.textoSuave}
+        />
+        <Text
+          style={[
+            styles.switchTexto,
+            modoVista === "movimientos" && styles.switchTextoActivo,
+          ]}
+        >
+          Movimientos
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={() => setModoVista("traspasos")}
+        style={[
+          styles.switchOpcion,
+          modoVista === "traspasos" && styles.switchOpcionActiva,
+        ]}
+      >
+        <Ionicons
+          name="swap-horizontal"
+          size={14}
+          color={modoVista === "traspasos" ? "#fff" : colors.textoSuave}
+        />
+        <Text
+          style={[
+            styles.switchTexto,
+            modoVista === "traspasos" && styles.switchTextoActivo,
+          ]}
+        >
+          Traspasos
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function ToolbarEditor() {
   const filas = useEditorStore((s) => s.filas);
   const anio = useEditorStore((s) => s.anio);
@@ -230,6 +282,7 @@ export function ToolbarEditor() {
               setMes(clave === "T" ? null : Number(clave))
             }
           />
+          <SwitchVista />
         </View>
 
         {/* Este View empuja el indicador de guardado a la derecha */}
@@ -277,6 +330,36 @@ const styles = StyleSheet.create({
 
   filtros: { flexDirection: "row", gap: 12 },
 
+  switchVista: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.tarjeta,
+    borderWidth: 1,
+    borderColor: colors.bordeFuerte,
+    borderRadius: 12,
+    padding: 3,
+    height: 44,
+  },
+  switchOpcion: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 9,
+  },
+  switchOpcionActiva: {
+    backgroundColor: colors.primario,
+  },
+  switchTexto: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.textoSuave,
+  },
+  switchTextoActivo: {
+    color: "#fff",
+    fontWeight: "700",
+  },
   btnIconoPrimario: {
     width: 44,
     height: 44,

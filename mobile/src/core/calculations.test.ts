@@ -20,6 +20,7 @@ function fila(parcial: Partial<FilaTransaccion>): FilaTransaccion {
     Categoria_Macro: parcial.Categoria_Macro ?? "Fijo",
     Subcategoria: parcial.Subcategoria ?? "",
     Concepto: parcial.Concepto ?? "",
+    Cuenta: parcial.Cuenta ?? "Unicaja",
     Importe: parcial.Importe ?? 0,
   };
 }

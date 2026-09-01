@@ -11,5 +11,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # En desarrollo NO hacemos "COPY . .", usaremos volúmenes en el docker-compose
 EXPOSE 8000
 
-# Arrancamos el servidor de desarrollo de Django
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Aplicamos migraciones y sembramos datos si la BD está vacía antes de arrancar
+# el servidor de desarrollo (el entrypoint de producción ya hace lo propio).
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py seed || true && python manage.py runserver 0.0.0.0:8000"]

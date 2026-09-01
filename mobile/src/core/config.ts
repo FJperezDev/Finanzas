@@ -14,6 +14,7 @@ export const COLUMNAS_EXCEL = [
   "Categoria_Macro",
   "Subcategoria",
   "Concepto",
+  "Cuenta",
   "Importe",
 ] as const;
 
@@ -24,6 +25,7 @@ export const ETIQUETAS_COLUMNA: Record<string, string> = {
   Categoria_Macro: "Categoría",
   Subcategoria: "Subcategoría",
   Concepto: "Concepto",
+  Cuenta: "Cuenta",
   Importe: "Importe",
 };
 

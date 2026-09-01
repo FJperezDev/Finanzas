@@ -19,6 +19,8 @@ import type {
   FilaTransaccion,
   Contacto,
   GastoCompartido,
+  Cuenta,
+  TraspasoHistorial,
 } from "./calculations";
 import { peticionAutenticada } from "./authApi";
 import { haySesion } from "./tokenStore";
@@ -34,6 +36,12 @@ import {
   eliminarContactoMock,
   subirAvatarMock,
   saldarDeudaMock,
+  leerCuentasMock,
+  crearCuentaMock,
+  actualizarCuentaMock,
+  eliminarCuentaMock,
+  crearTraspasoMock,
+  leerTraspasosMock,
 } from "./xlsxMock";
 import {
   COLUMNAS_CONTRATO,
@@ -90,6 +98,7 @@ async function leerDeApi(): Promise<FilaTransaccion[]> {
       Categoria_Macro: String(filaCruda.Categoria_Macro ?? "").trim(),
       Subcategoria: String(filaCruda.Subcategoria ?? "").trim(),
       Concepto: String(filaCruda.Concepto ?? "").trim(),
+      Cuenta: String(filaCruda.Cuenta ?? "").trim(),
       Importe: normalizarImporte(filaCruda.Importe),
     };
     for (const [clave, valor] of Object.entries(filaCruda)) {
@@ -330,6 +339,7 @@ export async function saldarDeudaApi(payload: {
   contacto_id: number;
   importe?: number;
   registrar_transaccion: boolean;
+  cuenta?: string;
 }): Promise<void> {
   if (!haySesion()) {
     await saldarDeudaMock(payload);
@@ -350,4 +360,114 @@ export async function saldarDeudaApi(payload: {
       datos.errores?.join(" ") || "Error al saldar la deuda.",
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cuentas corrientes y de inversión + traspasos
+// ---------------------------------------------------------------------------
+export async function leerCuentas(): Promise<Cuenta[]> {
+  if (!haySesion()) return leerCuentasMock();
+
+  const datos = await apiGet<{ cuentas: Cuenta[] }>("cuentas/");
+  return datos.cuentas;
+}
+
+export async function crearCuentaApi(payload: {
+  nombre: string;
+  tipo: string;
+}): Promise<void> {
+  if (!haySesion()) {
+    await crearCuentaMock(payload);
+    return;
+  }
+  const respuesta = await peticionAutenticada("cuentas/crear/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") || "Error al crear la cuenta.",
+    );
+  }
+}
+
+export async function actualizarCuentaApi(
+  cuentaId: number,
+  payload: { nombre: string; tipo: string },
+): Promise<void> {
+  if (!haySesion()) {
+    await actualizarCuentaMock(cuentaId, payload);
+    return;
+  }
+  const respuesta = await peticionAutenticada(
+    `cuentas/${cuentaId}/actualizar/`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") || "Error al actualizar la cuenta.",
+    );
+  }
+}
+
+export async function eliminarCuentaApi(id: number): Promise<void> {
+  if (!haySesion()) {
+    await eliminarCuentaMock(id);
+    return;
+  }
+  const respuesta = await peticionAutenticada(`cuentas/${id}/eliminar/`, {
+    method: "POST",
+  });
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") || "Error al eliminar la cuenta.",
+    );
+  }
+}
+
+export async function crearTraspasoApi(payload: {
+  fecha: string;
+  importe: number;
+  concepto: string;
+  cuenta_origen_id: number;
+  cuenta_destino_id: number;
+}): Promise<void> {
+  if (!haySesion()) {
+    await crearTraspasoMock(payload);
+    return;
+  }
+  const respuesta = await peticionAutenticada("traspasos/crear/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!respuesta.ok) {
+    const datos = (await respuesta.json().catch(() => ({}))) as {
+      errores?: string[];
+    };
+    throw new Error(
+      datos.errores?.join(" ") || "Error al registrar el traspaso.",
+    );
+  }
+}
+
+export async function leerTraspasos(): Promise<TraspasoHistorial[]> {
+  if (!haySesion()) return leerTraspasosMock();
+
+  const datos = await apiGet<{ traspasos: TraspasoHistorial[] }>("traspasos/");
+  return datos.traspasos;
 }

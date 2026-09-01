@@ -42,7 +42,7 @@ def construir_excel(filas: list[dict]) -> bytes:
         hoja.append([fila.get(col, "") for col in columnas])
 
     # Ancho de columnas aproximado para legibilidad
-    anchos = {"Fecha": 12, "Tipo": 10, "Categoria_Macro": 20, "Subcategoria": 20, "Concepto": 34, "Importe": 12}
+    anchos = {"Fecha": 12, "Tipo": 10, "Categoria_Macro": 20, "Subcategoria": 20, "Concepto": 34, "Cuenta": 18, "Importe": 12}
     for col_idx, col in enumerate(columnas, start=1):
         hoja.column_dimensions[hoja.cell(row=1, column=col_idx).column_letter].width = anchos.get(col, 16)
 
