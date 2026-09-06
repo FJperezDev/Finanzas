@@ -6,8 +6,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 
 import { ModalAnadirColumna } from "./ModalAnadirColumna";
@@ -15,12 +15,7 @@ import { ModalAnadirMovimiento } from "./ModalAnadirMovimiento";
 import { exportarXlsx } from "../../core/xlsxService";
 import { aniosDisponibles, useEditorStore } from "../../state/editorStore";
 import { colors } from "../../theme";
-import { Boton, ModalCentro } from "../ui";
-import {
-  MESES_ES,
-  TIPOS_PERMITIDOS,
-  CATEGORIAS_MACRO,
-} from "../../core/config";
+import { MESES_ES } from "../../core/config";
 
 // --- Botón exclusivo para iconos ---
 function BotonIcono({
@@ -136,9 +131,7 @@ function Desplegable({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Indicador de estado del autoguardado
-// ---------------------------------------------------------------------------
+// --- Indicador de estado del autoguardado ---
 function IndicadorGuardado() {
   const sucio = useEditorStore((s) => s.sucio);
   const guardando = useEditorStore((s) => s.guardando);
@@ -167,9 +160,7 @@ function IndicadorGuardado() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Barra de herramientas principal
-// ---------------------------------------------------------------------------
+// --- Switch Vista ---
 function SwitchVista() {
   const modoVista = useEditorStore((s) => s.modoVista);
   const setModoVista = useEditorStore((s) => s.setModoVista);
@@ -222,7 +213,13 @@ function SwitchVista() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Barra de herramientas principal
+// ---------------------------------------------------------------------------
 export function ToolbarEditor() {
+  const { width } = useWindowDimensions();
+  const esDesktop = width > 768;
+
   const filas = useEditorStore((s) => s.filas);
   const anio = useEditorStore((s) => s.anio);
   const mes = useEditorStore((s) => s.mes);
@@ -253,15 +250,14 @@ export function ToolbarEditor() {
 
   return (
     <View style={styles.contenedorPrincipal}>
-      {/* FILA 1 */}
       <View style={styles.filaPrincipal}>
-        <BotonIcono
-          icono="add"
-          onPress={() => setModalMovimiento(true)}
-          primario
-        />
-
-        <View style={styles.filtros}>
+        {/* GRUPO 1: Se le asigna un zIndex superior (100) para que el menú flote por encima del resto */}
+        <View style={[styles.grupoBotones, { zIndex: 100 }]}>
+          <BotonIcono
+            icono="add"
+            onPress={() => setModalMovimiento(true)}
+            primario
+          />
           <Desplegable
             icono="calendar-outline"
             etiqueta="Año"
@@ -282,17 +278,22 @@ export function ToolbarEditor() {
               setMes(clave === "T" ? null : Number(clave))
             }
           />
-          <SwitchVista />
         </View>
 
-        {/* Este View empuja el indicador de guardado a la derecha */}
-        <View style={{ flex: 1 }} />
-
-        {/* ESTADO DEL AUTOGUARDADO (sustituye al botón Guardar) */}
-        <IndicadorGuardado />
+        {/* GRUPO 2: zIndex inferior (1) */}
+        <View
+          style={[
+            styles.grupoBotones,
+            { zIndex: 1 },
+            esDesktop && { flex: 1, justifyContent: "space-between" },
+          ]}
+        >
+          <SwitchVista />
+          {esDesktop && <View style={{ flex: 1 }} />}
+          <IndicadorGuardado />
+        </View>
       </View>
 
-      {/* FILA 2 */}
       <View style={styles.filaSecundaria}>
         <BotonIcono icono="options" onPress={() => setModalColumna(true)} />
         {Platform.OS === "web" && (
@@ -319,16 +320,21 @@ export function ToolbarEditor() {
 }
 
 const styles = StyleSheet.create({
-  // --- ESTRUCTURA PRINCIPAL ---
-  contenedorPrincipal: { gap: 8, marginBottom: 8 },
+  contenedorPrincipal: { gap: 10, marginBottom: 8 },
+
   filaPrincipal: {
     flexDirection: "row",
     gap: 12,
     alignItems: "center",
     zIndex: 10,
+    flexWrap: "wrap",
   },
-
-  filtros: { flexDirection: "row", gap: 12 },
+  grupoBotones: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
 
   switchVista: {
     flexDirection: "row",
@@ -348,18 +354,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 9,
   },
-  switchOpcionActiva: {
-    backgroundColor: colors.primario,
-  },
-  switchTexto: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.textoSuave,
-  },
-  switchTextoActivo: {
-    color: "#fff",
-    fontWeight: "700",
-  },
+  switchOpcionActiva: { backgroundColor: colors.primario },
+  switchTexto: { fontSize: 12, fontWeight: "600", color: colors.textoSuave },
+  switchTextoActivo: { color: "#fff", fontWeight: "700" },
+
   btnIconoPrimario: {
     width: 44,
     height: 44,
@@ -384,7 +382,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // --- INDICADOR DE ESTADO DEL AUTOGUARDADO ---
   indicadorGuardado: {
     flexDirection: "row",
     alignItems: "center",
@@ -396,12 +393,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.bordeFuerte,
   },
-  indicadorGuardadoTexto: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
+  indicadorGuardadoTexto: { fontSize: 12, fontWeight: "600" },
 
-  // --- POPOVER DESPLEGABLES ---
   desplegableContenedor: { width: 140, position: "relative" },
   desplegableCabecera: {
     flexDirection: "row",
@@ -482,112 +475,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     marginTop: 2,
-  },
-
-  // --- FORMULARIO MODALES ---
-  formGrid: { gap: 12 },
-  formRow: { flexDirection: "row", gap: 12 },
-  formCol: { flex: 1, gap: 4 },
-  formLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: colors.textoSuave,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  formInput: {
-    backgroundColor: colors.fondo,
-    borderWidth: 1,
-    borderColor: colors.bordeFuerte,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.texto,
-  },
-
-  modalAyuda: {
-    fontSize: 14,
-    color: colors.textoSuave,
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  modalInputContenedor: {
-    flexDirection: "row",
-    gap: 10,
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  modalInputWrapper: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.fondo,
-    borderWidth: 1,
-    borderColor: colors.bordeFuerte,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-  },
-  modalInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: colors.texto,
-  },
-  modalError: {
-    fontSize: 12,
-    color: colors.peligro,
-    marginTop: 4,
-    marginLeft: 4,
-  },
-  divisor: { height: 1, backgroundColor: colors.borde, marginVertical: 20 },
-  modalSubtitulo: {
-    fontSize: 12,
-    textTransform: "uppercase",
-    fontWeight: "700",
-    color: colors.textoSuave,
-    marginBottom: 12,
-    letterSpacing: 0.5,
-  },
-  modalExtrasLista: { gap: 8 },
-  modalExtraFila: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.fondo,
-    borderWidth: 1,
-    borderColor: colors.borde,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    gap: 12,
-  },
-  modalExtraIcono: {
-    backgroundColor: colors.tarjeta,
-    padding: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borde,
-  },
-  modalExtraNombre: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.texto,
-    fontWeight: "600",
-  },
-  botonEliminarCol: {
-    padding: 6,
-    backgroundColor: colors.tarjeta,
-    borderRadius: 8,
-  },
-  modalVacio: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 24,
-    gap: 12,
-  },
-  modalSinExtras: {
-    fontSize: 14,
-    color: colors.textoMuySuave,
-    fontWeight: "500",
+    zIndex: 1,
   },
 });

@@ -5,7 +5,6 @@ import {
   Text,
   View,
   Platform,
-  ScrollView,
   useWindowDimensions,
 } from "react-native";
 
@@ -17,7 +16,7 @@ import { colors } from "../theme";
 
 export function EditorScreen() {
   const { width } = useWindowDimensions();
-  const esDesktop = width > 768; // Detectamos si es PC o Móvil
+  const esDesktop = width > 768;
 
   const cargar = useEditorStore((s) => s.cargar);
   const cargando = useEditorStore((s) => s.cargando);
@@ -32,7 +31,6 @@ export function EditorScreen() {
   const traspasos = useEditorStore((s) => s.traspasos);
   const modoVista = useEditorStore((s) => s.modoVista);
 
-  // Funciones de store
   const setCelda = useEditorStore((s) => s.setCelda);
   const deshacer = useEditorStore((s) => s.deshacer);
   const rehacer = useEditorStore((s) => s.rehacer);
@@ -66,7 +64,6 @@ export function EditorScreen() {
       }));
   }, [traspasos, anio, mes]);
 
-  // Atajos de teclado globales (Solo para Web / Escritorio)
   useEffect(() => {
     if (Platform.OS === "web") {
       const manejarTeclado = (e: KeyboardEvent) => {
@@ -76,7 +73,6 @@ export function EditorScreen() {
         ) {
           return;
         }
-
         if (e.ctrlKey || e.metaKey) {
           if (e.key.toLowerCase() === "z") {
             e.preventDefault();
@@ -91,7 +87,6 @@ export function EditorScreen() {
           }
         }
       };
-
       window.addEventListener("keydown", manejarTeclado);
       return () => window.removeEventListener("keydown", manejarTeclado);
     }
@@ -114,20 +109,9 @@ export function EditorScreen() {
   return (
     <View style={styles.pantalla}>
       <View style={[styles.contenido, { padding: esDesktop ? 16 : 8 }]}>
-        {/* ENVOLTORIO RESPONSIVO PARA TOOLBAR */}
-        <View style={[styles.toolbarContainer, esDesktop && { zIndex: 9999 }]}>
-          {esDesktop ? (
-            <ToolbarEditor />
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.toolbarScrollContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              <ToolbarEditor />
-            </ScrollView>
-          )}
+        {/* Z-INDEX ALTO PARA QUE LOS MENÚS FLOTEN SOBRE LA TABLA */}
+        <View style={styles.toolbarContainer}>
+          <ToolbarEditor />
         </View>
 
         {flash ? (
@@ -166,19 +150,15 @@ export function EditorScreen() {
               <HandsontableGrid
                 datos={filasFiltradas}
                 cuentas={cuentas.map((c) => c.nombre)}
-                onCellChange={(id, columna, nuevoValor) => {
-                  setCelda(id, columna, nuevoValor);
-                }}
-                onRowsRemove={(ids) => {
-                  eliminarFilasPorId(ids);
-                }}
+                onCellChange={(id, columna, nuevoValor) =>
+                  setCelda(id, columna, nuevoValor)
+                }
+                onRowsRemove={(ids) => eliminarFilasPorId(ids)}
                 onColumnRemove={(columnas) => {
                   const colsArray = Array.isArray(columnas)
                     ? columnas
                     : [columnas];
-                  colsArray.forEach((col) => {
-                    eliminarColumna(col);
-                  });
+                  colsArray.forEach((col) => eliminarColumna(col));
                 }}
                 onUndo={deshacer}
                 onRedo={rehacer}
@@ -194,12 +174,7 @@ export function EditorScreen() {
 const styles = StyleSheet.create({
   pantalla: { flex: 1, backgroundColor: colors.fondo },
   contenido: { flex: 1, paddingBottom: 0 },
-  toolbarContainer: { elevation: 9999 }, // Removido el zIndex forzado base para evitar fallos de scroll en móvil
-  toolbarScrollContent: {
-    gap: 8,
-    paddingRight: 16, // Aire al final del scroll horizontal
-    alignItems: "center",
-  },
+  toolbarContainer: { zIndex: 9999, elevation: 9999 }, // Z-index restaurado para los popovers
   centrado: { flex: 1, alignItems: "center", justifyContent: "center" },
   cargandoTexto: { fontSize: 13, color: colors.textoSuave },
   gridContainer: {
