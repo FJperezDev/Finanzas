@@ -115,4 +115,5 @@ export interface PayloadGastoCompartido {
   pagador_id: number | null;
   participantes: { contacto_id: number; importe_exacto?: number }[];
   omitir_transaccion?: boolean;
+  cuenta_origen?: string;
 }

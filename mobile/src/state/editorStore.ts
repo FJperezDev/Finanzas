@@ -114,6 +114,7 @@ export interface EditorState {
     tipo_reparto: "IGUALES" | "EXACTO";
     pagador_id: number | null;
     participantes: { contacto_id: number; importe_exacto?: number }[];
+    cuenta_origen?: string;
   }) => Promise<void>;
 
   crearCuenta: (payload: { nombre: string; tipo: string }) => Promise<void>;

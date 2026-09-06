@@ -35,14 +35,16 @@ let memoria: FilaTransaccion[] | null = null;
 let memoriaContactos: Contacto[] | null = null;
 let memoriaGastos: GastoCompartido[] | null = null;
 let memoriaCuentas: Cuenta[] | null = null;
-let memoriaTraspasos: {
-  id: number;
-  fecha: string;
-  importe: number;
-  concepto: string;
-  cuenta_origen_id: number;
-  cuenta_destino_id: number;
-}[] | null = null;
+let memoriaTraspasos:
+  | {
+      id: number;
+      fecha: string;
+      importe: number;
+      concepto: string;
+      cuenta_origen_id: number;
+      cuenta_destino_id: number;
+    }[]
+  | null = null;
 
 function cargarCuentasMemoria(): Cuenta[] {
   if (!memoriaCuentas) {
@@ -151,7 +153,7 @@ export async function guardarGastoCompartidoMock(
       Categoria_Macro: payload.categoria_macro,
       Subcategoria: payload.subcategoria,
       Concepto: payload.concepto,
-      Cuenta: "Unicaja",
+      Cuenta: payload.cuenta_origen ?? "",
       Importe: payload.importe_total,
     });
   }
@@ -254,7 +256,11 @@ export async function saldarDeudaMock(payload: {
   importe?: number;
   registrar_transaccion: boolean;
   cuenta?: string;
-}): Promise<{ importe: number; tipo: "Ingreso" | "Gasto" | null; perdonado: boolean }> {
+}): Promise<{
+  importe: number;
+  tipo: "Ingreso" | "Gasto" | null;
+  perdonado: boolean;
+}> {
   const gastos = cargarGastosMemoria();
   let meDeben = 0;
   let leDebo = 0;
@@ -309,8 +315,11 @@ export async function saldarDeudaMock(payload: {
       for (const g of gastos) {
         if (restante <= 0) break;
         if (g.pagador_id !== payload.contacto_id) continue;
-        const miParte = g.importe_total - g.participaciones.reduce((a, p) => a + p.importe_debido, 0);
-        const saldada = g.mi_parte_saldada_importe ?? (g.mi_parte_saldada ? miParte : 0);
+        const miParte =
+          g.importe_total -
+          g.participaciones.reduce((a, p) => a + p.importe_debido, 0);
+        const saldada =
+          g.mi_parte_saldada_importe ?? (g.mi_parte_saldada ? miParte : 0);
         const pendiente = Math.max(miParte - saldada, 0);
         if (pendiente <= 0) continue;
         const aplicar = Math.min(restante, pendiente);
@@ -368,8 +377,11 @@ export async function saldarDeudaMock(payload: {
     for (const g of gastos) {
       if (restante <= 0) break;
       if (g.pagador_id !== payload.contacto_id) continue;
-      const miParte = g.importe_total - g.participaciones.reduce((a, p) => a + p.importe_debido, 0);
-      const saldada = g.mi_parte_saldada_importe ?? (g.mi_parte_saldada ? miParte : 0);
+      const miParte =
+        g.importe_total -
+        g.participaciones.reduce((a, p) => a + p.importe_debido, 0);
+      const saldada =
+        g.mi_parte_saldada_importe ?? (g.mi_parte_saldada ? miParte : 0);
       const pendiente = Math.max(miParte - saldada, 0);
       if (pendiente <= 0) continue;
       const aplicar = Math.min(restante, pendiente);

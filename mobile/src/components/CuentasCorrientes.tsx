@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 
@@ -30,18 +31,27 @@ export function CuentasModal({
 }) {
   const { cuentas, crearCuenta, actualizarCuenta, eliminarCuenta } =
     useCuentas();
-  const corrientes = cuentas.filter((c) => c.tipo === "corriente");
+  const { width } = useWindowDimensions();
+  const esDesktop = width > 768;
+
+  // Reactividad inmediata: se recalcula al instante cuando 'cuentas' muta
+  const corrientes = useMemo(
+    () => cuentas.filter((c) => c.tipo === "corriente"),
+    [cuentas],
+  );
 
   const [vista, setVista] = useState<"lista" | "crear" | "editar">("lista");
   const [editando, setEditando] = useState<Cuenta | null>(null);
   const [nombre, setNombre] = useState("");
   const [guardando, setGuardando] = useState(false);
 
+  // Limpia y resetea el estado inmediatamente al abrir/cerrar el modal
   useEffect(() => {
     if (visible) {
       setVista("lista");
       setEditando(null);
       setNombre("");
+      setGuardando(false);
     }
   }, [visible]);
 
@@ -78,7 +88,15 @@ export function CuentasModal({
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View style={styles.overlay}>
-        <View style={styles.contenedorModal}>
+        <View
+          style={[
+            styles.contenedorModal,
+            {
+              width: esDesktop ? 450 : "92%",
+              padding: esDesktop ? 24 : 20,
+            },
+          ]}
+        >
           <View style={styles.cabecera}>
             <TouchableOpacity
               onPress={() =>
@@ -115,7 +133,9 @@ export function CuentasModal({
                     <View key={c.id} style={styles.filaGestion}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.nombreCuenta}>{c.nombre}</Text>
-                        <Text style={styles.subCuenta}>{fmtEur(c.balance)}</Text>
+                        <Text style={styles.subCuenta}>
+                          {fmtEur(c.balance)}
+                        </Text>
                       </View>
                       <TouchableOpacity
                         style={styles.btnIcono}
@@ -125,7 +145,11 @@ export function CuentasModal({
                           setVista("editar");
                         }}
                       >
-                        <Ionicons name="pencil-outline" size={18} color={colors.textoSuave} />
+                        <Ionicons
+                          name="pencil-outline"
+                          size={18}
+                          color={colors.textoSuave}
+                        />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.btnBorrar}
@@ -136,7 +160,11 @@ export function CuentasModal({
                           )
                         }
                       >
-                        <Ionicons name="trash-outline" size={18} color={colors.peligro} />
+                        <Ionicons
+                          name="trash-outline"
+                          size={18}
+                          color={colors.peligro}
+                        />
                       </TouchableOpacity>
                     </View>
                   ))
@@ -196,27 +224,38 @@ export function TraspasoModal({
   onClose: () => void;
 }) {
   const { cuentas, crearTraspaso } = useCuentas();
-  const [fecha, setFecha] = useState(
-    new Date().toISOString().split("T")[0],
-  );
+  const { width } = useWindowDimensions();
+  const esDesktop = width > 768;
+
+  const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
   const [importe, setImporte] = useState("");
   const [concepto, setConcepto] = useState("");
   const [destinoId, setDestinoId] = useState(0);
   const [guardando, setGuardando] = useState(false);
 
+  // Reactividad inmediata sobre las posibles cuentas de destino
+  const destinos = useMemo(() => {
+    if (!cuenta) return [];
+    return cuentas.filter((c) => c.id !== cuenta.id);
+  }, [cuentas, cuenta]);
+
+  const destino = useMemo(
+    () => cuentas.find((c) => c.id === destinoId),
+    [cuentas, destinoId],
+  );
+
+  // Respuesta inmediata en inicialización del estado
   useEffect(() => {
     if (cuenta) {
       setFecha(new Date().toISOString().split("T")[0]);
       setImporte("");
       setConcepto("");
       setDestinoId(0);
+      setGuardando(false);
     }
   }, [cuenta]);
 
   if (!cuenta) return null;
-
-  const destinos = cuentas.filter((c) => c.id !== cuenta.id);
-  const destino = cuentas.find((c) => c.id === destinoId);
 
   const guardar = async () => {
     const importeNum = parseFloat(importe.replace(",", "."));
@@ -230,7 +269,7 @@ export function TraspasoModal({
         cuenta_origen_id: cuenta.id,
         cuenta_destino_id: destinoId,
       });
-      onClose();
+      onClose(); // Cerramos solo cuando ha terminado de guardar con éxito
     } catch (e) {
       // El error se gestiona en el store global (flash).
     } finally {
@@ -241,7 +280,15 @@ export function TraspasoModal({
   return (
     <Modal visible={!!cuenta} animationType="fade" transparent>
       <View style={styles.overlay}>
-        <View style={styles.contenedorModal}>
+        <View
+          style={[
+            styles.contenedorModal,
+            {
+              width: esDesktop ? 450 : "92%",
+              padding: esDesktop ? 24 : 20,
+            },
+          ]}
+        >
           <View style={styles.cabecera}>
             <TituloSeccion style={{ marginBottom: 0 }}>
               Traspaso desde {cuenta.nombre}
@@ -262,7 +309,7 @@ export function TraspasoModal({
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8 }}
+            contentContainerStyle={{ gap: 8, paddingBottom: 8 }}
           >
             {destinos.map((d) => {
               const activo = d.id === destinoId;
@@ -272,7 +319,9 @@ export function TraspasoModal({
                   onPress={() => setDestinoId(d.id)}
                   style={[styles.chip, activo && styles.chipActivo]}
                 >
-                  <Text style={[styles.chipText, activo && styles.chipTextActivo]}>
+                  <Text
+                    style={[styles.chipText, activo && styles.chipTextActivo]}
+                  >
                     {d.nombre}
                   </Text>
                 </Pressable>
@@ -340,8 +389,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 12,
   },
-  nombreCuenta: { fontSize: 15, color: colors.texto, fontWeight: "600", flex: 1 },
-
+  nombreCuenta: {
+    fontSize: 15,
+    color: colors.texto,
+    fontWeight: "600",
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
@@ -351,11 +404,8 @@ const styles = StyleSheet.create({
   },
   contenedorModal: {
     backgroundColor: colors.fondo,
-    width: "100%",
-    maxWidth: 450,
     maxHeight: "85%",
     borderRadius: 16,
-    padding: 24,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
@@ -382,7 +432,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     gap: 8,
-    marginTop: 8,
+    marginTop: 12,
   },
   txtPrimario: { color: "#fff", fontWeight: "700", fontSize: 15 },
   label: {
@@ -405,7 +455,7 @@ const styles = StyleSheet.create({
   infoOrigen: {
     fontSize: 13,
     color: colors.textoSuave,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   chip: {
     backgroundColor: colors.fondo,

@@ -1,5 +1,11 @@
 import React from "react";
-import { Text, View, Pressable, TouchableOpacity, StyleSheet } from "react-native";
+import {
+  Text,
+  View,
+  Pressable,
+  TouchableOpacity,
+  StyleSheet,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { fmtEur, fmtPct } from "../../core/formatos";
@@ -42,7 +48,7 @@ export function TarjetaPilar({
         { borderTopColor: colorAcento, borderTopWidth: 3 },
         pressed && {
           transform: [{ translateY: -2 }],
-          backgroundColor: colors.tarjeta,
+          backgroundColor: colors.tarjeta, // Asegúrate de tener este color en tu theme o usa una alternativa
         },
       ]}
       onPress={() => console.log(`Filtrar por pilar: ${titulo}`)}
@@ -56,7 +62,7 @@ export function TarjetaPilar({
         >
           <Ionicons name={icono} size={22} color={colorAcento} />
         </View>
-        <View style={{ flex: 1 }}>
+        <View style={styles.textosCabecera}>
           <Text style={styles.pilarTitulo}>{titulo}</Text>
           <Text style={styles.pilarSubtitulo} numberOfLines={1}>
             {subtitulo}
@@ -65,10 +71,10 @@ export function TarjetaPilar({
         {onAgregarCuenta && (
           <Pressable
             onPress={onAgregarCuenta}
-            hitSlop={10}
+            hitSlop={15}
             style={styles.btnAgregar}
           >
-            <Ionicons name="add-circle" size={22} color={colorAcento} />
+            <Ionicons name="add-circle" size={26} color={colorAcento} />
           </Pressable>
         )}
       </View>
@@ -134,28 +140,27 @@ export function TarjetaPilar({
     </Pressable>
   );
 }
-
 const styles = StyleSheet.create({
   pilar: {
-    flex: 1,
+    flex: 1, // RESTAURADO: En PC (row) hará que midan 33% cada una. En móvil (column) fluirán normal.
     backgroundColor: colors.surface0,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.04)",
     shadowColor: "#000",
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
   pilarCabecera: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 24,
+    gap: 12,
+    marginBottom: 16,
   },
   btnAgregar: {
-    padding: 2,
+    padding: 4,
     borderRadius: 12,
   },
   pilarIconoBox: {
@@ -163,6 +168,10 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 12,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  textosCabecera: {
+    flex: 1,
     justifyContent: "center",
   },
   pilarTitulo: {
@@ -176,33 +185,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   pilarCuerpo: {
-    flex: 1,
-    justifyContent: "flex-end",
+    marginTop: 4,
   },
   pilarValor: {
-    fontSize: 28,
-    fontWeight: "800",
+    fontSize: 32,
+    fontWeight: "900",
     color: colors.texto,
     fontVariant: ["tabular-nums"],
-    marginBottom: 8,
+    letterSpacing: -0.5,
+    marginBottom: 16,
   },
   listaCuentas: {
-    gap: 6,
-    marginBottom: 12,
+    gap: 8,
+    marginBottom: 16,
   },
   cuentaCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
   cuentaNombre: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textoSuave,
     fontWeight: "600",
     flexShrink: 1,
@@ -214,7 +223,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cuentaBalance: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.texto,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
@@ -224,8 +233,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.05)",
-    paddingTop: 12,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    paddingTop: 16,
   },
   pilarAportado: {
     fontSize: 12,
@@ -235,14 +244,14 @@ const styles = StyleSheet.create({
   badgeVariacion: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
     gap: 4,
   },
-  badgePositivo: { backgroundColor: colors.exitoSuave },
-  badgeNegativo: { backgroundColor: colors.peligroSuave },
-  textoVariacion: { fontSize: 11, fontWeight: "800" },
+  badgePositivo: { backgroundColor: colors.exito + "15" },
+  badgeNegativo: { backgroundColor: colors.peligro + "15" },
+  textoVariacion: { fontSize: 12, fontWeight: "800" },
   textoPositivo: { color: colors.exito },
   textoNegativo: { color: colors.peligro },
 });

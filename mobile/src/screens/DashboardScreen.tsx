@@ -1,26 +1,23 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
-  StyleSheet,
   Text,
   useWindowDimensions,
   View,
   TouchableOpacity,
-  Modal,
-  TextInput,
 } from "react-native";
 
 import { BarrasComparativa } from "../components/charts/BarrasComparativa";
 import { DonutDistribucion } from "../components/charts/DonutDistribucion";
 import { FlujoChart } from "../components/charts/FlujoChart";
-import { ContactosModal } from "../components/ContactosModal";
-import {
-  CuentasModal,
-  TraspasoModal,
-} from "../components/CuentasCorrientes";
 import { TarjetaPilar } from "../components/charts/TarjetaPilar";
+import { ContactosModal } from "../components/ContactosModal";
+import { CuentasModal, TraspasoModal } from "../components/CuentasCorrientes";
+import { ModalSaldarDeuda } from "../components/dashboard/ModalSaldarDeuda";
+import { dashboardStyles as styles } from "../components/dashboard/dashboardStyles";
+
 import {
   SelectorAlcance,
   SelectorAnios,
@@ -34,12 +31,13 @@ import {
   Tarjeta,
   TituloSeccion,
 } from "../components/ui";
+
 import {
   distribucion503020,
   esTransferenciaInversion,
   flujoDeCajaMensual,
   patrimonioAcumulado,
-  type BalanceContacto, // Importamos el tipo para el estado
+  type BalanceContacto,
   type Cuenta,
 } from "../core/calculations";
 import { UMBRAL_FIJOS_ALERTA } from "../core/config";
@@ -50,7 +48,11 @@ import {
   fmtPct,
   nombreMes,
 } from "../core/formatos";
-import { useTransacciones, useDeudas, useCuentas } from "../hooks/useTransacciones";
+import {
+  useTransacciones,
+  useDeudas,
+  useCuentas,
+} from "../hooks/useTransacciones";
 import { colors } from "../theme";
 
 export function DashboardScreen() {
@@ -63,8 +65,6 @@ export function DashboardScreen() {
   const [modalContactosVisible, setModalContactosVisible] = useState(false);
   const [modalCuentasVisible, setModalCuentasVisible] = useState(false);
   const [traspasoOrigen, setTraspasoOrigen] = useState<Cuenta | null>(null);
-
-  // Estado para saber qué deuda hemos tocado para saldarla
   const [deudaSeleccionada, setDeudaSeleccionada] =
     useState<BalanceContacto | null>(null);
 
@@ -165,8 +165,7 @@ export function DashboardScreen() {
     [cuentas],
   );
   const liquidezCuentas = useMemo(
-    () =>
-      cuentasCorrientes.reduce((acc, c) => acc + (c.balance ?? 0), 0),
+    () => cuentasCorrientes.reduce((acc, c) => acc + (c.balance ?? 0), 0),
     [cuentasCorrientes],
   );
 
@@ -318,14 +317,10 @@ export function DashboardScreen() {
         visible={modalContactosVisible}
         onClose={() => setModalContactosVisible(false)}
       />
-
-      {/* MODAL PARA SALDAR DEUDAS */}
       <ModalSaldarDeuda
         balance={deudaSeleccionada}
         onClose={() => setDeudaSeleccionada(null)}
       />
-
-      {/* MODALES DE CUENTAS CORRIENTES */}
       <CuentasModal
         visible={modalCuentasVisible}
         onClose={() => setModalCuentasVisible(false)}
@@ -601,7 +596,6 @@ export function DashboardScreen() {
               />
             </Tarjeta>
           </View>
-
           <View style={[esDesktop && { flex: 1 }]}>
             <Tarjeta style={{ height: "100%" }}>
               <TituloSeccion>{tituloHistorico}</TituloSeccion>
@@ -613,385 +607,3 @@ export function DashboardScreen() {
     </ScrollView>
   );
 }
-
-// ============================================================================
-// COMPONENTE: MODAL PARA SALDAR DEUDAS
-// ============================================================================
-function ModalSaldarDeuda({
-  balance,
-  onClose,
-}: {
-  balance: BalanceContacto | null;
-  onClose: () => void;
-}) {
-  const { saldarDeuda } = useDeudas();
-  const { cuentas } = useCuentas();
-  const cuentasCorrientes = cuentas.filter((c) => c.tipo === "corriente");
-
-  const [cantidad, setCantidad] = useState("");
-  const [cuenta, setCuenta] = useState("");
-  const [generarMovimiento, setGenerarMovimiento] = useState(true);
-  const [guardando, setGuardando] = useState(false);
-
-  useEffect(() => {
-    if (balance) {
-      setCantidad(Math.abs(balance.balanceNeto).toFixed(2));
-      setGenerarMovimiento(true); // Checkbox marcado por defecto
-    }
-  }, [balance]);
-
-  useEffect(() => {
-    if (!cuenta && cuentasCorrientes.length > 0) {
-      setCuenta(cuentasCorrientes[0].nombre);
-    }
-  }, [cuentasCorrientes, cuenta]);
-
-  if (!balance) return null;
-
-  const soyDeudor = balance.balanceNeto < 0;
-
-  const handleGuardar = async () => {
-    const importe = parseFloat(cantidad.replace(",", "."));
-    if (isNaN(importe) || importe <= 0) return;
-    setGuardando(true);
-    try {
-      // Transferencia (si la casilla está marcada) o perdón (si no). Si el
-      // importe supera el saldo, el exceso vuelca la balanza (pases a deber o
-      // el contacto pase a deberte).
-      await saldarDeuda({
-        contacto_id: balance.contacto.id,
-        importe,
-        registrar_transaccion: generarMovimiento,
-        cuenta,
-      });
-      onClose();
-    } catch (e) {
-      // El error ya se gestiona en el store global (flash).
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const importeNum = parseFloat(cantidad.replace(",", "."));
-  const exceso =
-    !isNaN(importeNum) && importeNum > Math.abs(balance.balanceNeto)
-      ? importeNum - Math.abs(balance.balanceNeto)
-      : 0;
-
-  return (
-    <Modal visible={!!balance} animationType="fade" transparent>
-      <View style={styles.overlayModalSaldar}>
-        <View style={styles.cajaModalSaldar}>
-          <View style={styles.cabeceraSaldar}>
-            <TituloSeccion style={{ marginBottom: 0 }}>
-              Saldar Cuentas
-            </TituloSeccion>
-            <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
-              <Ionicons name="close" size={24} color={colors.textoSuave} />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.textoInfoSaldar}>
-            {soyDeudor
-              ? `Le debes a ${balance.contacto.nombre} `
-              : `${balance.contacto.nombre} te debe `}
-            <Text
-              style={{
-                color: soyDeudor ? colors.peligro : colors.exito,
-                fontWeight: "700",
-              }}
-            >
-              {fmtEur(Math.abs(balance.balanceNeto))}
-            </Text>
-          </Text>
-
-          <Text style={styles.labelSaldar}>Cantidad a saldar (€)</Text>
-          <TextInput
-            style={styles.inputSaldar}
-            value={cantidad}
-            onChangeText={setCantidad}
-            keyboardType="numeric"
-          />
-          {generarMovimiento && exceso > 0.01 && (
-            <Text style={styles.txtNotaGasto}>
-              {soyDeudor
-                ? `Supera el saldo: pagas ${fmtEur(exceso)} de más, así que ${balance.contacto.nombre} te deberá ese importe.`
-                : `Supera el saldo: ${balance.contacto.nombre} te paga ${fmtEur(exceso)} de más, así que le deberás ese importe.`}
-            </Text>
-          )}
-
-          <TouchableOpacity
-            style={styles.btnCheckSaldar}
-            onPress={() => setGenerarMovimiento(!generarMovimiento)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={generarMovimiento ? "checkbox" : "square-outline"}
-              size={22}
-              color={generarMovimiento ? colors.primario : colors.textoMuySuave}
-            />
-            <Text style={styles.txtCheckSaldar}>
-              {soyDeudor
-                ? "Registrar gasto en mis transacciones"
-                : "Registrar ingreso en mis transacciones"}
-            </Text>
-          </TouchableOpacity>
-          {!generarMovimiento && (
-            <Text style={styles.txtNotaGasto}>
-              Se perdonará la deuda: quedará saldada sin registrar ningún
-              movimiento.
-            </Text>
-          )}
-
-          {generarMovimiento && (
-            <>
-              <Text style={styles.labelSaldar}>
-                {soyDeudor ? "Pagar desde la cuenta" : "Cobrar en la cuenta"}
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
-              >
-                {cuentasCorrientes.map((c) => {
-                  const activo = c.nombre === cuenta;
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      onPress={() => setCuenta(c.nombre)}
-                      style={[
-                        styles.chipCuenta,
-                        activo && styles.chipCuentaActivo,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.chipCuentaTexto,
-                          activo && styles.chipCuentaTextoActivo,
-                        ]}
-                      >
-                        {c.nombre}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </>
-          )}
-
-          <TouchableOpacity
-            style={[
-              styles.btnConfirmarSaldar,
-              { opacity: guardando || !cantidad ? 0.6 : 1 },
-            ]}
-            onPress={handleGuardar}
-            disabled={guardando || !cantidad}
-          >
-            {guardando ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={20}
-                  color="#fff"
-                />
-                <Text style={styles.txtConfirmarSaldar}>Confirmar</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-// ============================================================================
-// ESTILOS
-// ============================================================================
-const styles = StyleSheet.create({
-  pantalla: { flex: 1, backgroundColor: colors.fondo },
-  contenido: {
-    padding: 16,
-    paddingBottom: 40,
-    maxWidth: 1200,
-    marginHorizontal: "auto",
-    width: "100%",
-  },
-  centrado: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.fondo,
-    padding: 24,
-  },
-  estadoTexto: { fontSize: 13, color: colors.textoSuave },
-  resumenAlcance: {
-    fontSize: 11,
-    color: colors.textoMuySuave,
-    marginBottom: 12,
-  },
-  heroContainer: {
-    alignItems: "center",
-    paddingVertical: 30,
-    marginBottom: 20,
-  },
-  heroEtiqueta: {
-    fontSize: 14,
-    color: colors.textoSuave,
-    textTransform: "uppercase",
-    letterSpacing: 2,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  heroValorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  heroValor: {
-    fontSize: 48,
-    fontWeight: "900",
-    color: colors.texto,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: -1,
-  },
-  gridPilares: { flexDirection: "column", gap: 16, marginBottom: 24 },
-  gridPilaresDesktop: { flexDirection: "row", alignItems: "stretch" },
-  gridMetricas: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: -6,
-    marginBottom: 5,
-  },
-  metricaTarjeta: { width: "50%", paddingHorizontal: 6, marginBottom: 12 },
-  separador: {
-    height: 1,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    marginVertical: 16,
-  },
-  etiquetaBarra: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.texto,
-    marginBottom: 8,
-  },
-  cabeceraDeudas: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  cajaLiquidez: {
-    backgroundColor: "rgba(255,255,255,0.03)",
-    padding: 12,
-    borderRadius: 8,
-    gap: 4,
-  },
-  txtLiquidez: { fontSize: 13, color: colors.textoSuave, fontWeight: "500" },
-  filaDeuda: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.02)",
-  },
-  nombreDeuda: { fontSize: 15, color: colors.texto, fontWeight: "500" },
-  valorDeuda: {
-    fontSize: 15,
-    fontWeight: "700",
-    fontVariant: ["tabular-nums"],
-  },
-  gridGraficos: { flexDirection: "column", gap: 16 },
-  gridGraficosDesktop: { flexDirection: "row", alignItems: "stretch" },
-
-  // Estilos Modal Saldar Deudas
-  overlayModalSaldar: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  cajaModalSaldar: {
-    backgroundColor: colors.fondo,
-    width: "100%",
-    maxWidth: 400,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  cabeceraSaldar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  textoInfoSaldar: {
-    fontSize: 15,
-    color: colors.texto,
-    marginBottom: 20,
-    textAlign: "center",
-  },
-  labelSaldar: {
-    fontSize: 12,
-    color: colors.textoSuave,
-    marginBottom: 6,
-    fontWeight: "600",
-  },
-  inputSaldar: {
-    backgroundColor: "rgba(255,255,255,0.03)",
-    borderWidth: 1,
-    borderColor: colors.bordeFuerte,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.texto,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  btnCheckSaldar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 16,
-  },
-  txtCheckSaldar: { fontSize: 13, color: colors.texto, flex: 1 },
-  chipCuenta: {
-    backgroundColor: colors.fondo,
-    borderWidth: 1,
-    borderColor: colors.bordeFuerte,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  chipCuentaActivo: {
-    backgroundColor: colors.primario,
-    borderColor: colors.primario,
-  },
-  chipCuentaTexto: { fontSize: 13, color: colors.texto, fontWeight: "500" },
-  chipCuentaTextoActivo: { color: "#fff", fontWeight: "700" },
-  txtNotaGasto: {
-    fontSize: 12,
-    color: colors.textoSuave,
-    fontStyle: "italic",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  btnConfirmarSaldar: {
-    backgroundColor: colors.primario,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  txtConfirmarSaldar: { color: "#fff", fontWeight: "700", fontSize: 15 },
-});
