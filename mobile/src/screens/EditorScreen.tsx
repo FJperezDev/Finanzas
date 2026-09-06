@@ -1,6 +1,13 @@
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useEffect, useMemo } from "react";
-import { StyleSheet, Text, View, Platform } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  Platform,
+  ScrollView,
+  useWindowDimensions,
+} from "react-native";
 
 import { ToolbarEditor } from "../components/excel/ToolbarEditor";
 import { HandsontableGrid } from "../components/excel/HandsontableGrid";
@@ -9,6 +16,9 @@ import { useEditorStore } from "../state/editorStore";
 import { colors } from "../theme";
 
 export function EditorScreen() {
+  const { width } = useWindowDimensions();
+  const esDesktop = width > 768; // Detectamos si es PC o Móvil
+
   const cargar = useEditorStore((s) => s.cargar);
   const cargando = useEditorStore((s) => s.cargando);
   const error = useEditorStore((s) => s.error);
@@ -60,7 +70,6 @@ export function EditorScreen() {
   useEffect(() => {
     if (Platform.OS === "web") {
       const manejarTeclado = (e: KeyboardEvent) => {
-        // Ignorar si el usuario está escribiendo dentro de un input nativo fuera de la tabla
         if (
           e.target instanceof HTMLInputElement ||
           e.target instanceof HTMLTextAreaElement
@@ -90,7 +99,6 @@ export function EditorScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      // Solo cargamos si el store sigue en su estado inicial "cargando"
       if (useEditorStore.getState().cargando) {
         void cargar();
       }
@@ -105,10 +113,21 @@ export function EditorScreen() {
 
   return (
     <View style={styles.pantalla}>
-      <View style={styles.contenido}>
-        {/* ENVOLTORIO CLAVE PARA EL Z-INDEX */}
-        <View style={styles.toolbarContainer}>
-          <ToolbarEditor />
+      <View style={[styles.contenido, { padding: esDesktop ? 16 : 8 }]}>
+        {/* ENVOLTORIO RESPONSIVO PARA TOOLBAR */}
+        <View style={[styles.toolbarContainer, esDesktop && { zIndex: 9999 }]}>
+          {esDesktop ? (
+            <ToolbarEditor />
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.toolbarScrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              <ToolbarEditor />
+            </ScrollView>
+          )}
         </View>
 
         {flash ? (
@@ -133,7 +152,9 @@ export function EditorScreen() {
             <Text style={styles.cargandoTexto}>Cargando datos...</Text>
           </View>
         ) : (
-          <View style={styles.gridContainer}>
+          <View
+            style={[styles.gridContainer, { marginTop: esDesktop ? 12 : 6 }]}
+          >
             {modoVista === "traspasos" ? (
               <HandsontableGrid
                 datos={filasTraspasos}
@@ -172,13 +193,17 @@ export function EditorScreen() {
 
 const styles = StyleSheet.create({
   pantalla: { flex: 1, backgroundColor: colors.fondo },
-  contenido: { flex: 1, padding: 10, paddingBottom: 0 },
-  toolbarContainer: { zIndex: 9999, elevation: 9999 },
+  contenido: { flex: 1, paddingBottom: 0 },
+  toolbarContainer: { elevation: 9999 }, // Removido el zIndex forzado base para evitar fallos de scroll en móvil
+  toolbarScrollContent: {
+    gap: 8,
+    paddingRight: 16, // Aire al final del scroll horizontal
+    alignItems: "center",
+  },
   centrado: { flex: 1, alignItems: "center", justifyContent: "center" },
   cargandoTexto: { fontSize: 13, color: colors.textoSuave },
   gridContainer: {
     flex: 1,
-    marginTop: 10,
     borderRadius: 12,
     overflow: "hidden",
     borderWidth: 1,
